@@ -1,7 +1,7 @@
 # TimeToolbar
 A simple Windows system tray application and taskbar overlay to show times from multiple time zones.
 
-<img src="Images/MainToolbarScreenshot.png" />
+<img src="Images/MainTaskbarScreenshot.png" />
 
 # License
 This application is available under the MIT License.
