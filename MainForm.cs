@@ -6,10 +6,13 @@ namespace TimeToolbar
     {
         private PerformanceCounter RamCounter { get; }
         private PerformanceCounter CpuCounter { get; }
+        private Settings Settings { get; }
 
-        public MainForm()
+        public MainForm(Settings settings)
         {
             InitializeComponent();
+
+            this.Settings = settings;
 
             this.RamCounter = new PerformanceCounter("Memory", "Available MBytes", true);
             this.CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
@@ -49,8 +52,9 @@ namespace TimeToolbar
         {
             this.label1.Text = $"{DateTime.UtcNow:t}";
             this.label2.Text = "UTC";
-            this.label3.Text = $"{DateTime.Now.AddHours(-3):t}";
-            this.label4.Text = "Redmond";
+            var remoteTime = TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById(this.Settings.RemoteTimeZoneId));
+            this.label3.Text = $"{remoteTime:t}";
+            this.label4.Text = this.Settings.RemoteTimeZoneLabel;
 
             //this.label1.BackColor = Color.Magenta;
             //this.label2.BackColor = Color.Magenta;
