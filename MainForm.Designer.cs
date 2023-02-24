@@ -80,7 +80,7 @@
             // label3
             // 
             label3.Font = new Font("Segoe UI Variable Display", 9F, FontStyle.Regular, GraphicsUnit.Point);
-            label3.Location = new Point(220, 9);
+            label3.Location = new Point(210, 9);
             label3.Name = "label3";
             label3.Size = new Size(110, 24);
             label3.TabIndex = 2;
@@ -89,7 +89,7 @@
             // label4
             // 
             label4.Font = new Font("Segoe UI Variable Display", 7.5F, FontStyle.Regular, GraphicsUnit.Point);
-            label4.Location = new Point(220, 34);
+            label4.Location = new Point(210, 34);
             label4.Name = "label4";
             label4.Size = new Size(110, 24);
             label4.TabIndex = 3;
@@ -197,8 +197,8 @@
             {
                 this.label1.Location = new Point(110, 9);
                 this.label2.Location = new Point(110, 34);
-                this.label3.Location = new Point(220, 9);
-                this.label4.Location = new Point(220, 34);
+                this.label3.Location = new Point(210, 9);
+                this.label4.Location = new Point(210, 34);
 
                 this.label5.Visible = true;
                 this.label6.Visible = true;
