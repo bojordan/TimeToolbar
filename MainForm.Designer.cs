@@ -42,7 +42,7 @@
             label8 = new Label();
             systemTrayNotifyIcon = new NotifyIcon(components);
             systemTrayNotifyIconMenuStrip = new ContextMenuStrip(components);
-            currentStateMenuItem = new ToolStripMenuItem();
+            showCpuRamMenuItem = new ToolStripMenuItem();
             toolStripSeparator1 = new ToolStripSeparator();
             quitMenuItem = new ToolStripMenuItem();
             systemTrayNotifyIconMenuStrip.SuspendLayout();
@@ -142,15 +142,18 @@
             // systemTrayNotifyIconMenuStrip
             // 
             systemTrayNotifyIconMenuStrip.ImageScalingSize = new Size(24, 24);
-            systemTrayNotifyIconMenuStrip.Items.AddRange(new ToolStripItem[] { currentStateMenuItem, toolStripSeparator1, quitMenuItem });
+            systemTrayNotifyIconMenuStrip.Items.AddRange(new ToolStripItem[] { showCpuRamMenuItem, toolStripSeparator1, quitMenuItem });
             systemTrayNotifyIconMenuStrip.Name = "contextMenuStrip1";
             systemTrayNotifyIconMenuStrip.Size = new Size(211, 74);
             // 
             // currentStateMenuItem
             // 
-            currentStateMenuItem.Name = "currentStateMenuItem";
-            currentStateMenuItem.Size = new Size(210, 32);
-            currentStateMenuItem.Text = "<Current State>";
+            showCpuRamMenuItem.Name = "showCpuRamMenuItem";
+            showCpuRamMenuItem.Size = new Size(210, 32);
+            showCpuRamMenuItem.Text = "Show CPU and RAM";
+            showCpuRamMenuItem.Checked = true;
+            showCpuRamMenuItem.CheckOnClick = true;
+            showCpuRamMenuItem.CheckedChanged += ShowCpuRamMenuItem_CheckedChanged;
             // 
             // toolStripSeparator1
             // 
@@ -188,6 +191,34 @@
             ResumeLayout(false);
         }
 
+        private void ShowCpuRamMenuItem_CheckedChanged(object sender, EventArgs e)
+        {
+            if (this.showCpuRamMenuItem.Checked)
+            {
+                this.label1.Location = new Point(110, 9);
+                this.label2.Location = new Point(110, 34);
+                this.label3.Location = new Point(220, 9);
+                this.label4.Location = new Point(220, 34);
+
+                this.label5.Visible = true;
+                this.label6.Visible = true;
+                this.label7.Visible = true;
+                this.label8.Visible = true;
+            }
+            else
+            {
+                this.label1.Location = new Point(12, 9);
+                this.label2.Location = new Point(12, 34);
+                this.label3.Location = new Point(132, 9);
+                this.label4.Location = new Point(132, 34);
+
+                this.label5.Visible = false;
+                this.label6.Visible = false;
+                this.label7.Visible = false;
+                this.label8.Visible = false;
+            }
+        }
+
 
         #endregion
 
@@ -204,7 +235,7 @@
         private NotifyIcon systemTrayNotifyIcon;
         private ContextMenuStrip systemTrayNotifyIconMenuStrip;
         private ToolStripMenuItem quitMenuItem;
-        private ToolStripMenuItem currentStateMenuItem;
+        private ToolStripMenuItem showCpuRamMenuItem;
         private ToolStripSeparator toolStripSeparator1;
     }
 }
