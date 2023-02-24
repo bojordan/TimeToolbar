@@ -30,6 +30,18 @@ namespace TimeToolbar
             if (!this.systemTrayNotifyIconMenuStrip.Visible)
             {
                 this.TopMost = true;
+                if (Interop.ShouldSystemUseDarkMode())
+                {
+                    this.ForeColor = Color.White;
+                    this.BackColor = Color.FromArgb(22, 34, 47);
+                    this.TransparencyKey = Color.FromArgb(22, 34, 47);
+                }
+                else
+                {
+                    this.ForeColor = Color.Black;
+                    this.BackColor = Color.FromArgb(213, 226, 239);
+                    this.TransparencyKey = Color.FromArgb(213, 226, 239);
+                }
             }
         }
 
