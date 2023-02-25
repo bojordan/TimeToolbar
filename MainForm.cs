@@ -1,11 +1,12 @@
 using System.Diagnostics;
+using System.Management;
 
 namespace TimeToolbar
 {
     public partial class MainForm : Form
     {
-        private PerformanceCounter RamCounter { get; }
         private PerformanceCounter CpuCounter { get; }
+        private ManagementObjectSearcher ManagementObjectSearcher { get; }
         private Settings Settings { get; }
 
         public MainForm(Settings settings)
@@ -14,9 +15,9 @@ namespace TimeToolbar
 
             this.Settings = settings;
 
-            this.RamCounter = new PerformanceCounter("Memory", "Available MBytes", true);
             this.CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
-            
+            this.ManagementObjectSearcher = new ManagementObjectSearcher("select * from Win32_OperatingSystem");
+
             this.ForeColor = Color.Black;
             this.BackColor = Color.FromArgb(213, 226, 239);
             this.TransparencyKey = Color.FromArgb(213, 226, 239);
@@ -26,6 +27,31 @@ namespace TimeToolbar
             {
                 this.Location = new Point(5, Screen.PrimaryScreen.Bounds.Height - (this.Height));
             }
+        }
+
+        private double GetCurrentFreeRamPercentage()
+        {
+            using var memoryObjectCollection = ManagementObjectSearcher.Get();
+
+            var percent = memoryObjectCollection
+                .Cast<ManagementObject>()
+                .Select(mo =>
+                {
+                    if (double.TryParse(mo["FreePhysicalMemory"]?.ToString(), out double freePhysicalMemory) &&
+                        double.TryParse(mo["TotalVisibleMemorySize"]?.ToString(), out double totalVisibleMemorySize))
+                    {
+                        if (totalVisibleMemorySize > 0)
+                        {
+                            return ((totalVisibleMemorySize - freePhysicalMemory) / totalVisibleMemorySize) * 100;
+                        }
+                        return 0;
+                    }
+     
+                    return 0;
+
+                }).FirstOrDefault();
+
+            return percent;
         }
 
         private void Timer1_Tick(object sender, EventArgs e)
@@ -68,7 +94,7 @@ namespace TimeToolbar
             this.label5.Text = "CPU";
             this.label6.Text = "RAM";
             this.label7.Text = $"{this.CpuCounter.NextValue():F0}%";
-            this.label8.Text = $"{1F - this.RamCounter.NextValue() / 1024F / 32F:P0}";
+            this.label8.Text = $"{GetCurrentFreeRamPercentage():F0}%";
         }
 
         private void QuitMenuItem_Click(object sender, EventArgs e)
