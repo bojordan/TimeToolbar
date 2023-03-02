@@ -2,12 +2,14 @@
 {
     public class Settings
     {
-        public Settings()
+        public int XOffset { get; set; } = 5;
+
+        public TimeZoneSettings[] TimeZones { get; set; }
+
+        public class TimeZoneSettings
         {
-            this.RemoteTimeZoneId = "Pacific Standard Time";
-            this.RemoteTimeZoneLabel = "PST";
+            public string TimeZoneId { get; set; }
+            public string TimeZoneLabel { get; set; }
         }
-        public string RemoteTimeZoneId { get; set; }
-        public string RemoteTimeZoneLabel { get; set; }
     }
 }

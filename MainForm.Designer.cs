@@ -20,6 +20,33 @@
             base.Dispose(disposing);
         }
 
+        protected TimeZoneLabelBinding AddTimeZoneLabelBinding(Settings.TimeZoneSettings timeZoneSettings, int xOffset)
+        {
+            var timeLable = new Label();
+            timeLable.Font = new Font("Segoe UI Variable Display", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            timeLable.Location = new Point(xOffset, 9);
+            timeLable.Size = new Size(110, 24);
+            timeLable.TextAlign = ContentAlignment.MiddleCenter;
+
+            var zoneLable = new Label();
+            zoneLable.Font = new Font("Segoe UI Variable Display", 7.5F, FontStyle.Regular, GraphicsUnit.Point);
+            zoneLable.Location = new Point(xOffset, 34);
+            zoneLable.Size = new Size(110, 24);
+            zoneLable.TextAlign = ContentAlignment.MiddleCenter;
+
+            this.Controls.Add(timeLable);
+            this.Controls.Add(zoneLable);
+
+            this.ClientSize = new Size(this.ClientSize.Width + 110, this.ClientSize.Height);
+
+            return new TimeZoneLabelBinding
+            {
+                TimeZoneSettings = timeZoneSettings,
+                TimeLabel = timeLable,
+                ZoneLabel = zoneLable,
+            };
+        }
+
         #region Windows Form Designer generated code
 
         /// <summary>
@@ -30,12 +57,8 @@
         {
             components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(MainForm));
-            label1 = new Label();
             timer1 = new System.Windows.Forms.Timer(components);
             timer2 = new System.Windows.Forms.Timer(components);
-            label2 = new Label();
-            label3 = new Label();
-            label4 = new Label();
             label5 = new Label();
             label6 = new Label();
             label7 = new Label();
@@ -58,42 +81,6 @@
             timer2.Enabled = true;
             timer2.Interval = 3000;
             timer2.Tick += Timer2_Tick;
-            // 
-            // label1
-            // 
-            label1.Font = new Font("Segoe UI Variable Display", 9F, FontStyle.Regular, GraphicsUnit.Point);
-            label1.Location = new Point(110, 9);
-            label1.Name = "label1";
-            label1.Size = new Size(110, 24);
-            label1.TabIndex = 0;
-            label1.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // label2
-            // 
-            label2.Font = new Font("Segoe UI Variable Display", 7.5F, FontStyle.Regular, GraphicsUnit.Point);
-            label2.Location = new Point(110, 34);
-            label2.Name = "label2";
-            label2.Size = new Size(110, 24);
-            label2.TabIndex = 1;
-            label2.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // label3
-            // 
-            label3.Font = new Font("Segoe UI Variable Display", 9F, FontStyle.Regular, GraphicsUnit.Point);
-            label3.Location = new Point(210, 9);
-            label3.Name = "label3";
-            label3.Size = new Size(110, 24);
-            label3.TabIndex = 2;
-            label3.TextAlign = ContentAlignment.MiddleCenter;
-            // 
-            // label4
-            // 
-            label4.Font = new Font("Segoe UI Variable Display", 7.5F, FontStyle.Regular, GraphicsUnit.Point);
-            label4.Location = new Point(210, 34);
-            label4.Name = "label4";
-            label4.Size = new Size(110, 24);
-            label4.TabIndex = 3;
-            label4.TextAlign = ContentAlignment.MiddleCenter;
             // 
             // label5
             // 
@@ -176,10 +163,6 @@
             Controls.Add(label7);
             Controls.Add(label6);
             Controls.Add(label5);
-            Controls.Add(label4);
-            Controls.Add(label3);
-            Controls.Add(label2);
-            Controls.Add(label1);
             FormBorderStyle = FormBorderStyle.None;
             Icon = (Icon)resources.GetObject("$this.Icon");
             Name = "Form1";
@@ -191,43 +174,14 @@
             ResumeLayout(false);
         }
 
-        private void ShowCpuRamMenuItem_CheckedChanged(object sender, EventArgs e)
-        {
-            if (this.showCpuRamMenuItem.Checked)
-            {
-                this.label1.Location = new Point(110, 9);
-                this.label2.Location = new Point(110, 34);
-                this.label3.Location = new Point(210, 9);
-                this.label4.Location = new Point(210, 34);
-
-                this.label5.Visible = true;
-                this.label6.Visible = true;
-                this.label7.Visible = true;
-                this.label8.Visible = true;
-            }
-            else
-            {
-                this.label1.Location = new Point(12, 9);
-                this.label2.Location = new Point(12, 34);
-                this.label3.Location = new Point(132, 9);
-                this.label4.Location = new Point(132, 34);
-
-                this.label5.Visible = false;
-                this.label6.Visible = false;
-                this.label7.Visible = false;
-                this.label8.Visible = false;
-            }
-        }
-
-
         #endregion
 
         private System.Windows.Forms.Timer timer1;
         private System.Windows.Forms.Timer timer2;
-        private Label label1;
-        private Label label2;
-        private Label label3;
-        private Label label4;
+        //private Label label1;
+        //private Label label2;
+        //private Label label3;
+        //private Label label4;
         private Label label5;
         private Label label6;
         private Label label7;

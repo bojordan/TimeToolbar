@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Management;
+using static TimeToolbar.Settings;
 
 namespace TimeToolbar
 {
@@ -9,11 +10,42 @@ namespace TimeToolbar
         private ManagementObjectSearcher ManagementObjectSearcher { get; }
         private Settings Settings { get; }
 
+        public class TimeZoneLabelBinding
+        {
+            public TimeZoneSettings TimeZoneSettings { get; set; }
+            public Label TimeLabel { get; set; }
+            public Label ZoneLabel { get; set; }
+        }
+
+        public List<TimeZoneLabelBinding> TimeZoneLabels { get; set; } = new List<TimeZoneLabelBinding>();
+
         public MainForm(Settings settings)
         {
             InitializeComponent();
 
             this.Settings = settings;
+
+            if (this.Settings.TimeZones == null || this.Settings.TimeZones.Length == 0 )
+            {
+                this.Settings.TimeZones = new TimeZoneSettings[] {
+                    new TimeZoneSettings
+                    {
+                        TimeZoneId = "UTC",
+                        TimeZoneLabel = "UTC"
+                    }
+                    ,
+                    new TimeZoneSettings
+                    {
+                        TimeZoneId = "Pacific Standard Time",
+                        TimeZoneLabel = "PST"
+                    }
+                };
+            }
+
+            for (var i = 0; i < Settings.TimeZones.Length; i++)
+            {
+                TimeZoneLabels.Add(AddTimeZoneLabelBinding(Settings.TimeZones[i], 110 * (i + 1)));
+            }
 
             this.CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
             this.ManagementObjectSearcher = new ManagementObjectSearcher("select * from Win32_OperatingSystem");
@@ -25,7 +57,7 @@ namespace TimeToolbar
 
             if (Screen.PrimaryScreen != null)
             {
-                this.Location = new Point(5, Screen.PrimaryScreen.Bounds.Height - (this.Height));
+                this.Location = new Point(Settings.XOffset, Screen.PrimaryScreen.Bounds.Height - (this.Height));
             }
         }
 
@@ -76,20 +108,12 @@ namespace TimeToolbar
 
         private void Timer2_Tick(object sender, EventArgs e)
         {
-            this.label1.Text = $"{DateTime.UtcNow:t}";
-            this.label2.Text = "UTC";
-            var remoteTime = TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById(this.Settings.RemoteTimeZoneId));
-            this.label3.Text = $"{remoteTime:t}";
-            this.label4.Text = this.Settings.RemoteTimeZoneLabel;
-
-            //this.label1.BackColor = Color.Magenta;
-            //this.label2.BackColor = Color.Magenta;
-            //this.label3.BackColor = Color.CornflowerBlue;
-            //this.label4.BackColor = Color.CornflowerBlue;
-            //this.label5.BackColor = Color.OrangeRed;
-            //this.label6.BackColor = Color.OrangeRed;
-            //this.label7.BackColor = Color.YellowGreen;
-            //this.label8.BackColor = Color.YellowGreen;
+            foreach (var timeZoneLabel in TimeZoneLabels)
+            {
+                var timeString = TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById(timeZoneLabel.TimeZoneSettings.TimeZoneId));
+                timeZoneLabel.TimeLabel.Text = $"{timeString:t}";
+                timeZoneLabel.ZoneLabel.Text = timeZoneLabel.TimeZoneSettings.TimeZoneLabel;
+            }
 
             this.label5.Text = "CPU";
             this.label6.Text = "RAM";
@@ -100,6 +124,36 @@ namespace TimeToolbar
         private void QuitMenuItem_Click(object sender, EventArgs e)
         {
             Application.Exit();
+        }
+
+        private void ShowCpuRamMenuItem_CheckedChanged(object sender, EventArgs e)
+        {
+            if (this.showCpuRamMenuItem.Checked)
+            {
+                for (var i = 0; i < this.TimeZoneLabels.Count; i++)
+                {
+                    this.TimeZoneLabels[i].TimeLabel.Location = new Point(i * 100 + 110, 9);
+                    this.TimeZoneLabels[i].ZoneLabel.Location = new Point(i * 100 + 110, 34);
+                }
+
+                this.label5.Visible = true;
+                this.label6.Visible = true;
+                this.label7.Visible = true;
+                this.label8.Visible = true;
+            }
+            else
+            {
+                for (var i = 0; i < this.TimeZoneLabels.Count; i++)
+                {
+                    this.TimeZoneLabels[i].TimeLabel.Location = new Point(i * 100 + 10, 9);
+                    this.TimeZoneLabels[i].ZoneLabel.Location = new Point(i * 100 + 10, 34);
+                }
+
+                this.label5.Visible = false;
+                this.label6.Visible = false;
+                this.label7.Visible = false;
+                this.label8.Visible = false;
+            }
         }
     }
 }
