@@ -55,10 +55,36 @@ namespace TimeToolbar
             this.TransparencyKey = Color.FromArgb(213, 226, 239);
             this.TopMost = true;
 
+            this.SetFormLocation();
+
+        }
+
+        private void SetFormLocation()
+        {
             if (Screen.PrimaryScreen != null)
             {
-                this.Location = new Point(Settings.XOffset, Screen.PrimaryScreen.Bounds.Height - (this.Height));
+                var baseOffset = 0;
+                if (AreWindowsWidgetsEnabled())
+                {
+                    baseOffset = 150;
+                }
+
+                this.Location = new Point(baseOffset + Settings.XOffset, Screen.PrimaryScreen.Bounds.Height - (this.Height));
             }
+        }
+
+        private static bool AreWindowsWidgetsEnabled()
+        {
+            const string keyName = @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced";
+            const string valueName = "TaskbarDa";
+
+            var widgetsAreEnabled = Microsoft.Win32.Registry.GetValue(keyName, valueName, 0) as int?;
+            if (widgetsAreEnabled != null)
+            {
+                return widgetsAreEnabled == 1;
+            }
+
+            return false;
         }
 
         private double GetCurrentFreeRamPercentage()
@@ -108,6 +134,8 @@ namespace TimeToolbar
 
         private void Timer2_Tick(object sender, EventArgs e)
         {
+            this.SetFormLocation();
+
             foreach (var timeZoneLabel in TimeZoneLabels)
             {
                 var timeString = TimeZoneInfo.ConvertTime(DateTime.Now, TimeZoneInfo.FindSystemTimeZoneById(timeZoneLabel.TimeZoneSettings.TimeZoneId));
