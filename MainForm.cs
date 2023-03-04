@@ -21,11 +21,9 @@ namespace TimeToolbar
 
         public MainForm(Settings settings)
         {
-            InitializeComponent();
-
             this.Settings = settings;
 
-            if (this.Settings.TimeZones == null || this.Settings.TimeZones.Length == 0 )
+            if (this.Settings.TimeZones == null || this.Settings.TimeZones.Length == 0)
             {
                 this.Settings.TimeZones = new TimeZoneSettings[] {
                     new TimeZoneSettings
@@ -42,10 +40,7 @@ namespace TimeToolbar
                 };
             }
 
-            for (var i = 0; i < Settings.TimeZones.Length; i++)
-            {
-                TimeZoneLabels.Add(AddTimeZoneLabelBinding(Settings.TimeZones[i], 110 * (i + 1)));
-            }
+            InitializeComponent();
 
             this.CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
             this.ManagementObjectSearcher = new ManagementObjectSearcher("select * from Win32_OperatingSystem");
@@ -66,7 +61,7 @@ namespace TimeToolbar
                 var baseOffset = 0;
                 if (AreWindowsWidgetsEnabled())
                 {
-                    baseOffset = 150;
+                    baseOffset = 200;
                 }
 
                 this.Location = new Point(baseOffset + Settings.XOffset, Screen.PrimaryScreen.Bounds.Height - (this.Height));

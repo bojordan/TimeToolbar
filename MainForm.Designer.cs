@@ -37,8 +37,6 @@
             this.Controls.Add(timeLable);
             this.Controls.Add(zoneLable);
 
-            this.ClientSize = new Size(this.ClientSize.Width + 110, this.ClientSize.Height);
-
             return new TimeZoneLabelBinding
             {
                 TimeZoneSettings = timeZoneSettings,
@@ -81,6 +79,12 @@
             timer2.Enabled = true;
             timer2.Interval = 3000;
             timer2.Tick += Timer2_Tick;
+            
+            for (var i = 0; i < Settings.TimeZones.Length; i++)
+            {
+                TimeZoneLabels.Add(AddTimeZoneLabelBinding(Settings.TimeZones[i], 110 * (i + 1)));
+            }
+
             // 
             // label5
             // 
@@ -158,7 +162,7 @@
             // 
             AutoScaleDimensions = new SizeF(10F, 25F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(400, 68);
+            ClientSize = new Size(400 + this.Settings.TimeZones.Length * 110, 68);
             Controls.Add(label8);
             Controls.Add(label7);
             Controls.Add(label6);
