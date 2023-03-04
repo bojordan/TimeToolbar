@@ -22,26 +22,26 @@
 
         protected TimeZoneLabelBinding AddTimeZoneLabelBinding(Settings.TimeZoneSettings timeZoneSettings, int xOffset)
         {
-            var timeLable = new Label();
-            timeLable.Font = new Font("Segoe UI Variable Display", 9F, FontStyle.Regular, GraphicsUnit.Point);
-            timeLable.Location = new Point(xOffset, 9);
-            timeLable.Size = new Size(110, 24);
-            timeLable.TextAlign = ContentAlignment.MiddleCenter;
+            var timeLabel = new Label();
+            timeLabel.Font = new Font("Segoe UI Variable Display", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            timeLabel.Location = new Point(xOffset, 9);
+            timeLabel.Size = new Size(110, 24);
+            timeLabel.TextAlign = ContentAlignment.MiddleCenter;
 
-            var zoneLable = new Label();
-            zoneLable.Font = new Font("Segoe UI Variable Display", 7.5F, FontStyle.Regular, GraphicsUnit.Point);
-            zoneLable.Location = new Point(xOffset, 34);
-            zoneLable.Size = new Size(110, 24);
-            zoneLable.TextAlign = ContentAlignment.MiddleCenter;
+            var zoneLabel = new Label();
+            zoneLabel.Font = new Font("Segoe UI Variable Display", 7.5F, FontStyle.Regular, GraphicsUnit.Point);
+            zoneLabel.Location = new Point(xOffset, 34);
+            zoneLabel.Size = new Size(110, 24);
+            zoneLabel.TextAlign = ContentAlignment.MiddleCenter;
 
-            this.Controls.Add(timeLable);
-            this.Controls.Add(zoneLable);
+            this.Controls.Add(timeLabel);
+            this.Controls.Add(zoneLabel);
 
             return new TimeZoneLabelBinding
             {
                 TimeZoneSettings = timeZoneSettings,
-                TimeLabel = timeLable,
-                ZoneLabel = zoneLable,
+                TimeLabel = timeLabel,
+                ZoneLabel = zoneLabel,
             };
         }
 
@@ -182,10 +182,6 @@
 
         private System.Windows.Forms.Timer timer1;
         private System.Windows.Forms.Timer timer2;
-        //private Label label1;
-        //private Label label2;
-        //private Label label3;
-        //private Label label4;
         private Label label5;
         private Label label6;
         private Label label7;
