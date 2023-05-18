@@ -13,6 +13,7 @@
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ApplicationIcon>clock_icon-icons.com_48329.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

@@ -50,11 +50,28 @@ namespace TimeToolbar
 
             this.ForeColor = Color.Black;
             this.BackColor = Color.FromArgb(213, 226, 239);
+            this.ShowInTaskbar = false;
+            this.FormBorderStyle = FormBorderStyle.None;
+            this.Name = "TimeToolbar";
             this.TransparencyKey = Color.FromArgb(213, 226, 239);
             this.TopMost = true;
 
             this.SetFormLocation();
+        }
 
+        /// <summary>
+        /// Hide FormBorderStyle.None window from alt-tab
+        /// https://www.csharp411.com/hide-form-from-alttab/
+        /// </summary>
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                // turn on WS_EX_TOOLWINDOW style bit
+                cp.ExStyle |= 0x80;
+                return cp;
+            }
         }
 
         private void SetFormLocation()
