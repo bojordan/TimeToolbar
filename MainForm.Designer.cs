@@ -45,6 +45,11 @@
             };
         }
 
+        protected void LabelsClicked(object sender, EventArgs e)
+        {
+            System.Diagnostics.Process.Start("taskmgr");
+        }
+
         #region Windows Form Designer generated code
 
         /// <summary>
@@ -94,6 +99,7 @@
             label5.Size = new Size(90, 24);
             label5.TabIndex = 4;
             label5.TextAlign = ContentAlignment.MiddleLeft;
+            label5.DoubleClick += LabelsClicked;
             // 
             // label6
             // 
@@ -103,6 +109,7 @@
             label6.Size = new Size(90, 24);
             label6.TabIndex = 5;
             label6.TextAlign = ContentAlignment.MiddleLeft;
+            label6.DoubleClick += LabelsClicked;
             // 
             // label7
             // 
@@ -112,6 +119,7 @@
             label7.Size = new Size(50, 24);
             label7.TabIndex = 4;
             label7.TextAlign = ContentAlignment.MiddleRight;
+            label7.DoubleClick += LabelsClicked;
             // 
             // label8
             // 
@@ -121,6 +129,7 @@
             label8.Size = new Size(50, 24);
             label8.TabIndex = 5;
             label8.TextAlign = ContentAlignment.MiddleRight;
+            label8.DoubleClick += LabelsClicked;
             // 
             // systemTrayNotifyIcon
             // 
