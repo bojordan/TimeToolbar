@@ -7,7 +7,8 @@ namespace TimeToolbar
     public partial class MainForm : Form
     {
         private PerformanceCounter CpuCounter { get; }
-        private ManagementObjectSearcher ManagementObjectSearcher { get; }
+        private ManagementObjectSearcher MgmtObjSearcherWin32OperatingSystem { get; }
+        private ManagementObjectSearcher MgmtObjSearcherWin32Processor { get; }
         private Settings Settings { get; }
 
         public class TimeZoneLabelBinding
@@ -42,8 +43,10 @@ namespace TimeToolbar
 
             InitializeComponent();
 
-            this.CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
-            this.ManagementObjectSearcher = new ManagementObjectSearcher("select * from Win32_OperatingSystem");
+            //this.CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total", true);
+            this.CpuCounter = new PerformanceCounter("Processor Information", "% Processor Utility", "_Total", true);
+            this.MgmtObjSearcherWin32OperatingSystem = new ManagementObjectSearcher("select * from Win32_OperatingSystem");
+            this.MgmtObjSearcherWin32Processor = new ManagementObjectSearcher("select * from Win32_Processor");
 
             this.ForeColor = Color.Black;
             this.BackColor = Color.FromArgb(213, 226, 239);
@@ -84,7 +87,7 @@ namespace TimeToolbar
 
         private double GetCurrentFreeRamPercentage()
         {
-            using var memoryObjectCollection = ManagementObjectSearcher.Get();
+            using var memoryObjectCollection = MgmtObjSearcherWin32OperatingSystem.Get();
 
             var percent = memoryObjectCollection
                 .Cast<ManagementObject>()
@@ -97,9 +100,32 @@ namespace TimeToolbar
                         {
                             return ((totalVisibleMemorySize - freePhysicalMemory) / totalVisibleMemorySize) * 100;
                         }
-                        return 0;
                     }
      
+                    return 0;
+
+                }).FirstOrDefault();
+
+            return percent;
+        }
+
+        private double GetCurrentCpuUsage()
+        {
+            using var memoryObjectCollection = MgmtObjSearcherWin32Processor.Get();
+
+            var percent = memoryObjectCollection
+                .Cast<ManagementObject>()
+                .Select(mo =>
+                {
+                    if (double.TryParse(mo.Properties["LoadPercentage"]?.Value?.ToString(), out double loadPercentage))
+                    {
+                        if (loadPercentage > 0)
+                        {
+                            System.Diagnostics.Debug.WriteLine(loadPercentage);
+                            return loadPercentage;
+                        }
+                    }
+
                     return 0;
 
                 }).FirstOrDefault();
