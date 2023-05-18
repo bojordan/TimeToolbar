@@ -47,7 +47,9 @@
 
         protected void LabelsClicked(object sender, EventArgs e)
         {
-            System.Diagnostics.Process.Start("taskmgr");
+            var startInfo = new System.Diagnostics.ProcessStartInfo("taskmgr");
+            startInfo.UseShellExecute = true;
+            System.Diagnostics.Process.Start(startInfo);
         }
 
         #region Windows Form Designer generated code
