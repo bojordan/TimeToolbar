@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Management;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -22,6 +23,8 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _dataTimer;
     private readonly List<TimeZoneLabelBinding> _timeZoneBindings = new();
 
+    private TextBlock _cpuLabelText = null!;
+    private TextBlock _ramLabelText = null!;
     private TextBlock _cpuValueText = null!;
     private TextBlock _ramValueText = null!;
     private Border _cpuRamPanel = null!;
@@ -30,6 +33,11 @@ public sealed partial class MainWindow : Window
 
     private AppWindow _appWindow = null!;
     private IntPtr _hWnd;
+
+    // Drag state
+    private bool _isDragging;
+    private int _dragStartCursorX;
+    private int _dragStartWindowX;
 
     // System tray
     private NativeMethods.NOTIFYICONDATA _notifyIconData;
@@ -70,6 +78,9 @@ public sealed partial class MainWindow : Window
         // Build the dynamic UI
         BuildUI();
 
+        // Apply theme-dependent colors (background + accent)
+        ApplyThemeColors();
+
         // Set up system tray icon
         SetupTrayIcon();
 
@@ -85,6 +96,12 @@ public sealed partial class MainWindow : Window
 
         // Initial data population
         DataTimer_Tick(null!, null!);
+
+        // Drag support
+        RootGrid.PointerPressed += RootGrid_PointerPressed;
+        RootGrid.PointerMoved += RootGrid_PointerMoved;
+        RootGrid.PointerReleased += RootGrid_PointerReleased;
+        RootGrid.PointerCaptureLost += RootGrid_PointerCaptureLost;
 
         this.Closed += MainWindow_Closed;
     }
@@ -123,11 +140,7 @@ public sealed partial class MainWindow : Window
         NativeMethods.DwmSetWindowAttribute(_hWnd, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE,
             ref cornerPref, sizeof(int));
 
-        // Opaque background enables ClearType subpixel text rendering
-        var isDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
-        RootGrid.Background = new SolidColorBrush(
-            isDark ? Windows.UI.Color.FromArgb(255, 40, 40, 40)
-                   : Windows.UI.Color.FromArgb(255, 240, 240, 240));
+        RootGrid.ActualThemeChanged += (s, e) => ApplyThemeColors();
 
         // WS_EX_TOOLWINDOW: hide from Alt+Tab
         // WS_EX_NOACTIVATE: don't steal focus when clicked
@@ -140,6 +153,23 @@ public sealed partial class MainWindow : Window
         NativeMethods.SetWindowSubclass(_hWnd, _subclassProc, 0, IntPtr.Zero);
 
         PositionOnTaskbar();
+    }
+
+    private void ApplyThemeColors()
+    {
+        var isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+        RootGrid.Background = new SolidColorBrush(
+            isDark ? Windows.UI.Color.FromArgb(255, 40, 40, 40)
+                   : Windows.UI.Color.FromArgb(255, 240, 240, 240));
+
+        var accentBrush = new SolidColorBrush(
+            isDark ? (Windows.UI.Color)Application.Current.Resources["SystemAccentColorLight2"]
+                   : (Windows.UI.Color)Application.Current.Resources["SystemAccentColorDark2"]);
+
+        _cpuLabelText.Foreground = accentBrush;
+        _ramLabelText.Foreground = accentBrush;
+        foreach (var binding in _timeZoneBindings)
+            binding.ZoneText.Foreground = accentBrush;
     }
 
     private void PositionOnTaskbar()
@@ -174,6 +204,61 @@ public sealed partial class MainWindow : Window
             taskbarTop + inset,
             physicalWidth,
             taskbarHeight - (inset * 2)));
+    }
+
+    private void RootGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        RootGrid.CapturePointer(e.Pointer);
+        NativeMethods.GetCursorPos(out var pt);
+        _dragStartCursorX = pt.X;
+        _dragStartWindowX = _appWindow.Position.X;
+        _isDragging = true;
+    }
+
+    private void RootGrid_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isDragging) return;
+        NativeMethods.GetCursorPos(out var pt);
+        var newX = _dragStartWindowX + (pt.X - _dragStartCursorX);
+        _appWindow.Move(new PointInt32(newX, _appWindow.Position.Y));
+    }
+
+    private void RootGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_isDragging) return;
+        RootGrid.ReleasePointerCapture(e.Pointer);
+        FinishDrag();
+    }
+
+    private void RootGrid_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        FinishDrag();
+    }
+
+    private void FinishDrag()
+    {
+        if (!_isDragging) return;
+        _isDragging = false;
+
+        // Back-calculate XOffset from the new window position so
+        // PositionOnTaskbar() will keep the window in place.
+        var dpi = NativeMethods.GetDpiForWindow(_hWnd);
+        var scale = dpi / 96.0;
+        var inset = (int)(5 * scale);
+        var windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
+        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        var baseOffset = AreWindowsWidgetsEnabled() ? 200 : 0;
+
+        _settings.XOffset = (int)((_appWindow.Position.X - displayArea.WorkArea.X - inset) / scale) - baseOffset;
+        SaveSettings();
+    }
+
+    private void SaveSettings()
+    {
+        var wrapper = new { Settings = _settings };
+        var json = JsonSerializer.Serialize(wrapper, new JsonSerializerOptions { WriteIndented = true });
+        var path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        File.WriteAllText(path, json);
     }
 
     private void BuildUI()
@@ -214,14 +299,14 @@ public sealed partial class MainWindow : Window
 
     private Border CreateCpuRamPanel()
     {
-        var cpuLabel = new TextBlock
+        _cpuLabelText = new TextBlock
         {
             Text = "CPU",
             IsTextScaleFactorEnabled = false,
             FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.7
+            VerticalAlignment = VerticalAlignment.Center
         };
+        var cpuLabel = _cpuLabelText;
 
         _cpuValueText = new TextBlock
         {
@@ -232,14 +317,14 @@ public sealed partial class MainWindow : Window
             MinWidth = 36
         };
 
-        var ramLabel = new TextBlock
+        _ramLabelText = new TextBlock
         {
             Text = "RAM",
             IsTextScaleFactorEnabled = false,
             FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.7
+            VerticalAlignment = VerticalAlignment.Center
         };
+        var ramLabel = _ramLabelText;
 
         _ramValueText = new TextBlock
         {
