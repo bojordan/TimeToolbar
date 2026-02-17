@@ -18,8 +18,8 @@ namespace TimeToolbar;
 public sealed partial class MainWindow : Window
 {
     private readonly Settings _settings;
-    private readonly PerformanceCounter _cpuCounter;
-    private readonly ManagementObjectSearcher _mgmtObjSearcherOS;
+    private PerformanceCounter? _cpuCounter;
+    private ManagementObjectSearcher? _mgmtObjSearcherOS;
     private readonly DispatcherTimer _topmostTimer;
     private readonly DispatcherTimer _dataTimer;
     private readonly List<TimeZoneLabelBinding> _timeZoneBindings = new();
@@ -80,10 +80,6 @@ public sealed partial class MainWindow : Window
         this.InitializeComponent();
         this.Title = "TimeToolbar";
 
-        // Initialize performance counters
-        _cpuCounter = new PerformanceCounter("Processor Information", "% Processor Utility", "_Total", true);
-        _mgmtObjSearcherOS = new ManagementObjectSearcher("select * from Win32_OperatingSystem");
-
         // Configure window chrome, position, and behavior
         ConfigureWindow();
 
@@ -116,8 +112,10 @@ public sealed partial class MainWindow : Window
         _dataTimer.Tick += DataTimer_Tick;
         _dataTimer.Start();
 
-        // Initial data population
-        DataTimer_Tick(null!, null!);
+        // Populate time zones immediately, defer CPU/RAM to background init
+        UpdateTimeZoneDisplays();
+        PositionOnTaskbar();
+        InitPerformanceCountersAsync();
 
         // Drag support
         RootGrid.PointerPressed += RootGrid_PointerPressed;
@@ -624,9 +622,22 @@ public sealed partial class MainWindow : Window
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
     }
 
-    private async void DataTimer_Tick(object? sender, object e)
+    private async void InitPerformanceCountersAsync()
     {
-        // Update time zone displays (cheap, stays on UI thread)
+        var (counter, searcher) = await Task.Run(() =>
+        {
+            var c = new PerformanceCounter("Processor Information", "% Processor Utility", "_Total", true);
+            c.NextValue(); // prime the counter (first read is always 0)
+            var s = new ManagementObjectSearcher("select * from Win32_OperatingSystem");
+            return (c, s);
+        });
+        _cpuCounter = counter;
+        _mgmtObjSearcherOS = searcher;
+        DataTimer_Tick(null!, null!);
+    }
+
+    private void UpdateTimeZoneDisplays()
+    {
         foreach (var binding in _timeZoneBindings)
         {
             var time = TimeZoneInfo.ConvertTime(DateTime.Now,
@@ -634,8 +645,14 @@ public sealed partial class MainWindow : Window
             binding.TimeText.Text = _use24HourFormat ? $"{time:HH:mm}" : $"{time:h:mm tt}";
             binding.ZoneText.Text = binding.TimeZoneSettings.TimeZoneLabel;
         }
+    }
 
+    private async void DataTimer_Tick(object? sender, object e)
+    {
+        UpdateTimeZoneDisplays();
         PositionOnTaskbar();
+
+        if (_cpuCounter == null || _mgmtObjSearcherOS == null) return;
 
         // Read CPU/RAM on background thread to avoid blocking UI
         try
@@ -661,7 +678,7 @@ public sealed partial class MainWindow : Window
 
     private double GetCurrentRamUsage()
     {
-        using var collection = _mgmtObjSearcherOS.Get();
+        using var collection = _mgmtObjSearcherOS!.Get();
         return collection.Cast<ManagementObject>()
             .Select(mo =>
             {
@@ -1331,7 +1348,7 @@ public sealed partial class MainWindow : Window
         _dataTimer.Stop();
         RemoveTrayIcon();
 
-        try { _cpuCounter.Dispose(); } catch { }
-        try { _mgmtObjSearcherOS.Dispose(); } catch { }
+        try { _cpuCounter?.Dispose(); } catch { }
+        try { _mgmtObjSearcherOS?.Dispose(); } catch { }
     }
 }
