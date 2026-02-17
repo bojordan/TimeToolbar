@@ -104,6 +104,9 @@ public sealed partial class MainWindow : Window
         RootGrid.PointerReleased += RootGrid_PointerReleased;
         RootGrid.PointerCaptureLost += RootGrid_PointerCaptureLost;
 
+        // Right-click context menu
+        RootGrid.RightTapped += RootGrid_RightTapped;
+
         this.Closed += MainWindow_Closed;
     }
 
@@ -209,6 +212,7 @@ public sealed partial class MainWindow : Window
 
     private void RootGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (!e.GetCurrentPoint(RootGrid).Properties.IsLeftButtonPressed) return;
         RootGrid.CapturePointer(e.Pointer);
         NativeMethods.GetCursorPos(out var pt);
         _dragStartCursorX = pt.X;
@@ -556,8 +560,15 @@ public sealed partial class MainWindow : Window
         NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_DELETE, ref _notifyIconData);
     }
 
+    private void RootGrid_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        ShowTrayContextMenu();
+    }
+
     private void ShowTrayContextMenu()
     {
+        _topmostTimer.Stop();
+
         var hMenu = NativeMethods.CreatePopupMenu();
 
         var showCpuRamFlags = NativeMethods.MF_STRING |
@@ -574,6 +585,7 @@ public sealed partial class MainWindow : Window
             pt.X, pt.Y, 0, _hWnd, IntPtr.Zero);
 
         NativeMethods.DestroyMenu(hMenu);
+        _topmostTimer.Start();
 
         switch (cmd)
         {
