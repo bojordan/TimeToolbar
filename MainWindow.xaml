@@ -11,6 +11,6 @@
                     VerticalAlignment="Center"
                     HorizontalAlignment="Center"
                     Spacing="0"
-                    Padding="4,0" />
+                    Padding="8,0,12,0" />
     </Grid>
 </Window>

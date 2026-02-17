@@ -37,6 +37,8 @@ public static class NativeMethods
     public const uint MF_SEPARATOR = 0x00000800;
     public const uint MF_CHECKED = 0x00000008;
     public const uint MF_UNCHECKED = 0x00000000;
+    public const uint MF_GRAYED = 0x00000001;
+    public const uint MF_POPUP = 0x00000010;
     public const uint TPM_RETURNCMD = 0x0100;
     public const uint TPM_NONOTIFY = 0x0080;
 
@@ -65,12 +67,6 @@ public static class NativeMethods
     {
         public int X;
         public int Y;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct MARGINS
-    {
-        public int Left, Right, Top, Bottom;
     }
 
     public delegate IntPtr SUBCLASSPROC(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, IntPtr uIdSubclass, IntPtr dwRefData);
@@ -121,6 +117,4 @@ public static class NativeMethods
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
-    [DllImport("dwmapi.dll")]
-    public static extern int DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS margins);
 }

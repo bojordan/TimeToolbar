@@ -33,6 +33,8 @@ public sealed partial class MainWindow : Window
     private bool _showCpuRam;
     private bool _use24HourFormat;
     private Window? _settingsWindow;
+    private double _lastCpuPercent;
+    private double _lastRamPercent;
 
     private AppWindow _appWindow = null!;
     private IntPtr _hWnd;
@@ -40,7 +42,9 @@ public sealed partial class MainWindow : Window
     // Drag state
     private bool _isDragging;
     private int _dragStartCursorX;
+    private int _dragStartCursorY;
     private int _dragStartWindowX;
+    private int _dragStartWindowY;
 
     // System tray
     private NativeMethods.NOTIFYICONDATA _notifyIconData;
@@ -59,6 +63,7 @@ public sealed partial class MainWindow : Window
     {
         _settings = Program.AppSettings ?? new Settings();
         _showCpuRam = _settings.ShowCpuRam;
+        _use24HourFormat = _settings.Use24HourFormat;
 
         if (_settings.TimeZones == null || _settings.TimeZones.Length == 0)
         {
@@ -82,7 +87,8 @@ public sealed partial class MainWindow : Window
         // Build the dynamic UI
         BuildUI();
 
-        // Apply theme-dependent colors (background + accent)
+        // Apply theme override and theme-dependent colors
+        ApplyThemeOverride();
         ApplyThemeColors();
 
         // Apply initial CPU/RAM visibility from settings
@@ -91,6 +97,8 @@ public sealed partial class MainWindow : Window
             _cpuRamPanel.Visibility = Visibility.Collapsed;
             _separator.Visibility = Visibility.Collapsed;
         }
+        if (_timeZoneBindings.Count == 0)
+            _separator.Visibility = Visibility.Collapsed;
 
         // Set up system tray icon
         SetupTrayIcon();
@@ -169,12 +177,62 @@ public sealed partial class MainWindow : Window
         PositionOnTaskbar();
     }
 
+    private void ApplyThemeOverride()
+    {
+        RootGrid.RequestedTheme = _settings.ThemeOverride switch
+        {
+            "Light" => ElementTheme.Light,
+            "Dark" => ElementTheme.Dark,
+            _ => ElementTheme.Default
+        };
+    }
+
+    private void RebuildToolbar()
+    {
+        ContentPanel.Children.Clear();
+        _timeZoneBindings.Clear();
+        BuildUI();
+
+        if (_timeZoneBindings.Count == 0)
+        {
+            _showCpuRam = true;
+            _settings.ShowCpuRam = true;
+        }
+
+        _cpuRamPanel.Visibility = _showCpuRam ? Visibility.Visible : Visibility.Collapsed;
+        _separator.Visibility = (_showCpuRam && _timeZoneBindings.Count > 0)
+            ? Visibility.Visible : Visibility.Collapsed;
+
+        ApplyThemeOverride();
+        ApplyThemeColors();
+        DataTimer_Tick(null!, null!);
+        SaveSettings();
+    }
+
     private void ApplyThemeColors()
     {
         var isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+
         RootGrid.Background = new SolidColorBrush(
             isDark ? Windows.UI.Color.FromArgb(255, 40, 40, 40)
                    : Windows.UI.Color.FromArgb(255, 240, 240, 240));
+
+        // Subtle DWM border
+        if (_settings.ShowBorder)
+        {
+            var borderColor = isDark
+                ? Windows.UI.Color.FromArgb(255, 80, 80, 80)
+                : Windows.UI.Color.FromArgb(255, 200, 200, 200);
+            int dwmColor = borderColor.R | (borderColor.G << 8) | (borderColor.B << 16);
+            NativeMethods.DwmSetWindowAttribute(_hWnd, NativeMethods.DWMWA_BORDER_COLOR,
+                ref dwmColor, sizeof(int));
+        }
+        else
+        {
+            int colorNone = NativeMethods.DWMWA_COLOR_NONE;
+            NativeMethods.DwmSetWindowAttribute(_hWnd, NativeMethods.DWMWA_BORDER_COLOR,
+                ref colorNone, sizeof(int));
+        }
 
         var accentBrush = new SolidColorBrush(
             isDark ? (Windows.UI.Color)Application.Current.Resources["SystemAccentColorLight2"]
@@ -182,6 +240,8 @@ public sealed partial class MainWindow : Window
 
         _cpuLabelText.Foreground = accentBrush;
         _ramLabelText.Foreground = accentBrush;
+        _cpuValueText.Foreground = GetUsageBrush(_lastCpuPercent);
+        _ramValueText.Foreground = GetUsageBrush(_lastRamPercent);
         foreach (var binding in _timeZoneBindings)
             binding.ZoneText.Foreground = accentBrush;
     }
@@ -204,20 +264,31 @@ public sealed partial class MainWindow : Window
         var dpi = NativeMethods.GetDpiForWindow(_hWnd);
         var scale = dpi / 96.0;
 
-        // Calculate content width in DIPs then scale to physical pixels
-        var tzCount = _settings.TimeZones?.Length ?? 0;
-        var cpuRamWidth = _showCpuRam ? 105 : 0;
-        var tzSeparators = tzCount > 1 ? (tzCount - 1) * 13 : 0;
-        var contentWidthDips = cpuRamWidth + (tzCount * 82) + tzSeparators;
+        // Measure actual content width in DIPs then scale to physical pixels
+        ContentPanel.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var contentWidthDips = ContentPanel.DesiredSize.Width;
+        if (contentWidthDips <= 0)
+        {
+            // Fallback before UI content is populated
+            var tzCount = _settings.TimeZones?.Length ?? 0;
+            var cpuRamWidth = _showCpuRam ? 105 : 0;
+            var tzSeparators = tzCount > 1 ? (tzCount - 1) * 13 : 0;
+            contentWidthDips = cpuRamWidth + (tzCount * 82) + tzSeparators;
+        }
         var physicalWidth = (int)(contentWidthDips * scale);
 
         // Inset the pill within the taskbar with padding
         var inset = (int)(5 * scale);
-        _appWindow.MoveAndResize(new RectInt32(
-            workArea.X + (int)((baseOffset + _settings.XOffset) * scale) + inset,
-            taskbarTop + inset,
-            physicalWidth,
-            taskbarHeight - (inset * 2)));
+        var windowHeight = taskbarHeight - (inset * 2);
+        var defaultY = taskbarTop + inset;
+
+        var x = workArea.X + (int)((baseOffset + _settings.XOffset) * scale) + inset;
+        var y = defaultY + (int)(_settings.YOffset * scale);
+
+        x = Math.Clamp(x, outerBounds.X + inset, outerBounds.X + outerBounds.Width - physicalWidth - inset);
+        y = Math.Clamp(y, outerBounds.Y + inset, defaultY);
+
+        _appWindow.MoveAndResize(new RectInt32(x, y, physicalWidth, windowHeight));
     }
 
     private void RootGrid_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -226,7 +297,9 @@ public sealed partial class MainWindow : Window
         RootGrid.CapturePointer(e.Pointer);
         NativeMethods.GetCursorPos(out var pt);
         _dragStartCursorX = pt.X;
+        _dragStartCursorY = pt.Y;
         _dragStartWindowX = _appWindow.Position.X;
+        _dragStartWindowY = _appWindow.Position.Y;
         _isDragging = true;
     }
 
@@ -234,8 +307,29 @@ public sealed partial class MainWindow : Window
     {
         if (!_isDragging) return;
         NativeMethods.GetCursorPos(out var pt);
+
+        var windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
+        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        var outerBounds = displayArea.OuterBounds;
+        var workArea = displayArea.WorkArea;
+
+        var dpi = NativeMethods.GetDpiForWindow(_hWnd);
+        var scale = dpi / 96.0;
+        var inset = (int)(5 * scale);
+
+        var taskbarTop = workArea.Y + workArea.Height;
+        var taskbarHeight = (outerBounds.Y + outerBounds.Height) - taskbarTop;
+        if (taskbarHeight <= 0) taskbarHeight = 48;
+        var defaultY = taskbarTop + inset;
+
         var newX = _dragStartWindowX + (pt.X - _dragStartCursorX);
-        _appWindow.Move(new PointInt32(newX, _appWindow.Position.Y));
+        var newY = _dragStartWindowY + (pt.Y - _dragStartCursorY);
+
+        var windowWidth = _appWindow.Size.Width;
+        newX = Math.Clamp(newX, outerBounds.X + inset, outerBounds.X + outerBounds.Width - windowWidth - inset);
+        newY = Math.Clamp(newY, outerBounds.Y + inset, defaultY);
+
+        _appWindow.Move(new PointInt32(newX, newY));
     }
 
     private void RootGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
@@ -255,16 +349,25 @@ public sealed partial class MainWindow : Window
         if (!_isDragging) return;
         _isDragging = false;
 
-        // Back-calculate XOffset from the new window position so
+        // Back-calculate offsets from the new window position so
         // PositionOnTaskbar() will keep the window in place.
         var dpi = NativeMethods.GetDpiForWindow(_hWnd);
         var scale = dpi / 96.0;
         var inset = (int)(5 * scale);
         var windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
         var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        var outerBounds = displayArea.OuterBounds;
+        var workArea = displayArea.WorkArea;
         var baseOffset = AreWindowsWidgetsEnabled() ? 200 : 0;
 
-        _settings.XOffset = (int)((_appWindow.Position.X - displayArea.WorkArea.X - inset) / scale) - baseOffset;
+        var taskbarTop = workArea.Y + workArea.Height;
+        var taskbarHeight = (outerBounds.Y + outerBounds.Height) - taskbarTop;
+        if (taskbarHeight <= 0) taskbarHeight = 48;
+        var defaultY = taskbarTop + inset;
+
+        _settings.XOffset = (int)((_appWindow.Position.X - workArea.X - inset) / scale) - baseOffset;
+        _settings.YOffset = (int)((_appWindow.Position.Y - defaultY) / scale);
+        if (_settings.YOffset > 0) _settings.YOffset = 0;
         SaveSettings();
     }
 
@@ -418,7 +521,6 @@ public sealed partial class MainWindow : Window
             Spacing = -2,
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Center,
-            MinWidth = 75,
             Padding = new Thickness(6, 2, 6, 2)
         };
         stack.Children.Add(timeText);
@@ -452,15 +554,16 @@ public sealed partial class MainWindow : Window
 
     private Brush GetUsageBrush(double percent)
     {
-        if (percent <= 90)
-            return (Brush)Application.Current.Resources["DefaultTextForegroundThemeBrush"];
-
-        // Lerp from default text color to deep red over 90–100%
-        var t = Math.Clamp((percent - 90) / 10.0, 0, 1);
         var isDark = RootGrid.ActualTheme == ElementTheme.Dark;
         var defaultColor = isDark
             ? Windows.UI.Color.FromArgb(255, 255, 255, 255)
             : Windows.UI.Color.FromArgb(255, 0, 0, 0);
+
+        if (percent <= 90)
+            return new SolidColorBrush(defaultColor);
+
+        // Lerp from default text color to deep red over 90–100%
+        var t = Math.Clamp((percent - 90) / 10.0, 0, 1);
         var redColor = Windows.UI.Color.FromArgb(255, 180, 30, 30);
 
         var r = (byte)(defaultColor.R + (redColor.R - defaultColor.R) * t);
@@ -493,6 +596,8 @@ public sealed partial class MainWindow : Window
         {
             var cpu = _cpuCounter.NextValue();
             var ram = GetCurrentRamUsage();
+            _lastCpuPercent = cpu;
+            _lastRamPercent = ram;
             _cpuValueText.Text = $"{cpu:F0}%";
             _ramValueText.Text = $"{ram:F0}%";
             _cpuValueText.Foreground = GetUsageBrush(cpu);
@@ -537,12 +642,15 @@ public sealed partial class MainWindow : Window
     private void TimeZonePanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         _use24HourFormat = !_use24HourFormat;
+        _settings.Use24HourFormat = _use24HourFormat;
         foreach (var binding in _timeZoneBindings)
         {
             var time = TimeZoneInfo.ConvertTime(DateTime.Now,
                 TimeZoneInfo.FindSystemTimeZoneById(binding.TimeZoneSettings.TimeZoneId));
             binding.TimeText.Text = _use24HourFormat ? $"{time:HH:mm}" : $"{time:h:mm tt}";
         }
+        PositionOnTaskbar();
+        SaveSettings();
     }
 
     // ---- Settings Window ----
@@ -560,7 +668,7 @@ public sealed partial class MainWindow : Window
         var window = new Window { Title = "TimeToolbar Settings" };
         _settingsWindow = window;
 
-        var allTimeZones = TimeZoneInfo.GetSystemTimeZones();
+        var allTimeZones = TimeZoneInfo.GetSystemTimeZones().ToList();
 
         var root = new StackPanel
         {
@@ -568,15 +676,68 @@ public sealed partial class MainWindow : Window
             Spacing = 16
         };
 
-        // Show CPU/RAM toggle
+        // -- Appearance group --
+        root.Children.Add(new TextBlock
+        {
+            Text = "Appearance",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold
+        });
+
+        var themeCombo = new ComboBox
+        {
+            Header = "Theme",
+            Items = { "System default", "Light", "Dark" },
+            SelectedIndex = _settings.ThemeOverride switch
+            {
+                "Light" => 1,
+                "Dark" => 2,
+                _ => 0
+            }
+        };
+        root.Children.Add(themeCombo);
+
+        var borderToggle = new ToggleSwitch
+        {
+            Header = "Show border",
+            IsOn = _settings.ShowBorder
+        };
+        root.Children.Add(borderToggle);
+
+        // -- Display group --
+        root.Children.Add(new TextBlock
+        {
+            Text = "Display",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 8, 0, 0)
+        });
+
+        var hasTzInitially = (_settings.TimeZones?.Length ?? 0) > 0;
         var cpuRamToggle = new ToggleSwitch
         {
             Header = "Show CPU and RAM",
-            IsOn = _showCpuRam
+            IsOn = hasTzInitially ? _showCpuRam : true,
+            IsEnabled = hasTzInitially
         };
         root.Children.Add(cpuRamToggle);
 
-        // Position offset
+        var timeFormatToggle = new ToggleSwitch
+        {
+            Header = "24-hour time",
+            IsOn = _use24HourFormat
+        };
+        root.Children.Add(timeFormatToggle);
+
+        // -- Layout group --
+        root.Children.Add(new TextBlock
+        {
+            Text = "Layout",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 8, 0, 0)
+        });
+
         var offsetBox = new NumberBox
         {
             Header = "Position Offset",
@@ -587,7 +748,7 @@ public sealed partial class MainWindow : Window
         };
         root.Children.Add(offsetBox);
 
-        // Time zones header
+        // -- Time Zones group --
         root.Children.Add(new TextBlock
         {
             Text = "Time Zones",
@@ -598,24 +759,106 @@ public sealed partial class MainWindow : Window
 
         // Time zone rows
         var tzRowsPanel = new StackPanel { Spacing = 8 };
-        var tzRows = new List<(ComboBox Combo, TextBox Label, StackPanel Row)>();
+        var tzRows = new List<(AutoSuggestBox SuggestBox, TextBox Label, StackPanel Row)>();
+
+        // Full rebuild for structural changes (add/remove/zone ID change)
+        void ApplyTimeZoneChanges()
+        {
+            var newTimeZones = new List<TimeZoneSettings>();
+            foreach (var (suggestBox, labelBox, _) in tzRows)
+            {
+                if (suggestBox.Tag is TimeZoneInfo tz)
+                {
+                    newTimeZones.Add(new TimeZoneSettings
+                    {
+                        TimeZoneId = tz.Id,
+                        TimeZoneLabel = string.IsNullOrWhiteSpace(labelBox.Text)
+                            ? tz.StandardName : labelBox.Text
+                    });
+                }
+            }
+            _settings.TimeZones = newTimeZones.ToArray();
+            RebuildToolbar();
+
+            var hasTz = _settings.TimeZones.Length > 0;
+            cpuRamToggle.IsEnabled = hasTz;
+            if (!hasTz && !cpuRamToggle.IsOn)
+                cpuRamToggle.IsOn = true;
+        }
+
+        // Lightweight sync for label text changes — no rebuild
+        void SyncTimeZoneLabels()
+        {
+            var validIdx = 0;
+            foreach (var (suggestBox, labelBox, _) in tzRows)
+            {
+                if (suggestBox.Tag is TimeZoneInfo tz)
+                {
+                    var label = string.IsNullOrWhiteSpace(labelBox.Text)
+                        ? tz.StandardName : labelBox.Text;
+                    if (validIdx < _timeZoneBindings.Count)
+                    {
+                        _timeZoneBindings[validIdx].TimeZoneSettings.TimeZoneLabel = label;
+                        _timeZoneBindings[validIdx].ZoneText.Text = label;
+                    }
+                    validIdx++;
+                }
+            }
+            _settings.TimeZones = _timeZoneBindings
+                .Select(b => b.TimeZoneSettings)
+                .ToArray();
+            PositionOnTaskbar();
+            SaveSettings();
+        }
 
         void AddTimeZoneRow(string? tzId = null, string? label = null)
         {
-            var combo = new ComboBox
+            var initialTz = tzId != null
+                ? allTimeZones.FirstOrDefault(tz => tz.Id == tzId) : null;
+
+            var suggestBox = new AutoSuggestBox
             {
-                ItemsSource = allTimeZones,
-                PlaceholderText = "Select time zone...",
-                MinWidth = 300
+                PlaceholderText = "Search time zone...",
+                MinWidth = 300,
+                Text = initialTz?.DisplayName ?? ""
             };
-            if (tzId != null)
-                combo.SelectedItem = allTimeZones.FirstOrDefault(tz => tz.Id == tzId);
+            suggestBox.Tag = initialTz;
+
+            suggestBox.TextChanged += (s, args) =>
+            {
+                if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput)
+                {
+                    suggestBox.Tag = null;
+                    var query = suggestBox.Text;
+                    suggestBox.ItemsSource = string.IsNullOrWhiteSpace(query)
+                        ? allTimeZones
+                        : allTimeZones.Where(tz =>
+                            tz.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                            tz.Id.Contains(query, StringComparison.OrdinalIgnoreCase))
+                          .ToList();
+                }
+            };
+
+            suggestBox.SuggestionChosen += (s, args) =>
+            {
+                if (args.SelectedItem is TimeZoneInfo tz)
+                    suggestBox.Text = tz.DisplayName;
+            };
+
+            suggestBox.QuerySubmitted += (s, args) =>
+            {
+                if (args.ChosenSuggestion is TimeZoneInfo tz)
+                {
+                    suggestBox.Tag = tz;
+                    ApplyTimeZoneChanges();
+                }
+            };
 
             var labelBox = new TextBox
             {
                 PlaceholderText = "Label",
                 Text = label ?? "",
-                Width = 90
+                Width = 140
             };
 
             var removeBtn = new Button
@@ -630,18 +873,25 @@ public sealed partial class MainWindow : Window
                 Orientation = Orientation.Horizontal,
                 Spacing = 8
             };
-            row.Children.Add(combo);
+            row.Children.Add(suggestBox);
             row.Children.Add(labelBox);
             row.Children.Add(removeBtn);
 
-            var rowTuple = (combo, labelBox, row);
+            var rowTuple = (suggestBox, labelBox, row);
             tzRows.Add(rowTuple);
             tzRowsPanel.Children.Add(row);
 
+            labelBox.TextChanged += (s, e) => SyncTimeZoneLabels();
+            labelBox.KeyDown += (s, e) =>
+            {
+                if (e.Key == Windows.System.VirtualKey.Enter)
+                    root.Focus(FocusState.Programmatic);
+            };
             removeBtn.Click += (s, e) =>
             {
                 tzRows.Remove(rowTuple);
                 tzRowsPanel.Children.Remove(row);
+                ApplyTimeZoneChanges();
             };
         }
 
@@ -657,64 +907,58 @@ public sealed partial class MainWindow : Window
         addBtn.Click += (s, e) => AddTimeZoneRow();
         root.Children.Add(addBtn);
 
-        // Save / Cancel buttons
-        var buttonPanel = new StackPanel
+        // Wire up immediate-apply handlers
+        cpuRamToggle.Toggled += (s, e) =>
         {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 8,
-            Margin = new Thickness(0, 16, 0, 0)
-        };
-
-        var saveBtn = new Button
-        {
-            Content = "Save",
-            Style = (Style)Application.Current.Resources["AccentButtonStyle"]
-        };
-        var cancelBtn = new Button { Content = "Cancel" };
-        buttonPanel.Children.Add(saveBtn);
-        buttonPanel.Children.Add(cancelBtn);
-        root.Children.Add(buttonPanel);
-
-        saveBtn.Click += (s, e) =>
-        {
-            // Collect time zones
-            var newTimeZones = new List<TimeZoneSettings>();
-            foreach (var (combo, labelBox, _) in tzRows)
-            {
-                if (combo.SelectedItem is TimeZoneInfo tz)
-                {
-                    newTimeZones.Add(new TimeZoneSettings
-                    {
-                        TimeZoneId = tz.Id,
-                        TimeZoneLabel = string.IsNullOrWhiteSpace(labelBox.Text)
-                            ? tz.StandardName : labelBox.Text
-                    });
-                }
-            }
-
-            _settings.TimeZones = newTimeZones.ToArray();
-            _settings.XOffset = double.IsNaN(offsetBox.Value) ? 0 : (int)offsetBox.Value;
             _showCpuRam = cpuRamToggle.IsOn;
             _settings.ShowCpuRam = _showCpuRam;
-
-            // Rebuild the toolbar UI
-            ContentPanel.Children.Clear();
-            _timeZoneBindings.Clear();
-            BuildUI();
-            if (!_showCpuRam)
-            {
-                _cpuRamPanel.Visibility = Visibility.Collapsed;
-                _separator.Visibility = Visibility.Collapsed;
-            }
-            ApplyThemeColors();
-            DataTimer_Tick(null!, null!);
-
+            _cpuRamPanel.Visibility = _showCpuRam ? Visibility.Visible : Visibility.Collapsed;
+            _separator.Visibility = (_showCpuRam && _timeZoneBindings.Count > 0)
+                ? Visibility.Visible : Visibility.Collapsed;
+            PositionOnTaskbar();
             SaveSettings();
-            window.Close();
         };
 
-        cancelBtn.Click += (s, e) => window.Close();
+        themeCombo.SelectionChanged += (s, e) =>
+        {
+            _settings.ThemeOverride = themeCombo.SelectedIndex switch
+            {
+                1 => "Light",
+                2 => "Dark",
+                _ => "System"
+            };
+            ApplyThemeOverride();
+            ApplyThemeColors();
+            SaveSettings();
+        };
+
+        borderToggle.Toggled += (s, e) =>
+        {
+            _settings.ShowBorder = borderToggle.IsOn;
+            ApplyThemeColors();
+            SaveSettings();
+        };
+
+        timeFormatToggle.Toggled += (s, e) =>
+        {
+            _use24HourFormat = timeFormatToggle.IsOn;
+            _settings.Use24HourFormat = _use24HourFormat;
+            foreach (var binding in _timeZoneBindings)
+            {
+                var time = TimeZoneInfo.ConvertTime(DateTime.Now,
+                    TimeZoneInfo.FindSystemTimeZoneById(binding.TimeZoneSettings.TimeZoneId));
+                binding.TimeText.Text = _use24HourFormat ? $"{time:HH:mm}" : $"{time:h:mm tt}";
+            }
+            PositionOnTaskbar();
+            SaveSettings();
+        };
+
+        offsetBox.ValueChanged += (s, e) =>
+        {
+            _settings.XOffset = double.IsNaN(offsetBox.Value) ? 0 : (int)offsetBox.Value;
+            PositionOnTaskbar();
+            SaveSettings();
+        };
 
         window.Content = new ScrollViewer { Content = root };
         window.Closed += (s, e) =>
@@ -727,7 +971,19 @@ public sealed partial class MainWindow : Window
         var settingsHwnd = WindowNative.GetWindowHandle(window);
         var settingsAppWindow = AppWindow.GetFromWindowId(
             Win32Interop.GetWindowIdFromWindow(settingsHwnd));
-        settingsAppWindow.Resize(new SizeInt32(520, 500));
+        var dpi = NativeMethods.GetDpiForWindow(settingsHwnd);
+        var scale = dpi / 96.0;
+        var minWidth = (int)(600 * scale);
+        var minHeight = (int)(800 * scale);
+        settingsAppWindow.Resize(new SizeInt32(minWidth, minHeight));
+        if (settingsAppWindow.Presenter is OverlappedPresenter settingsPresenter)
+        {
+            settingsPresenter.IsMinimizable = false;
+            settingsPresenter.IsMaximizable = false;
+        }
+        NativeMethods.SetWindowLongPtr(settingsHwnd, NativeMethods.GWL_STYLE,
+            NativeMethods.GetWindowLongPtr(settingsHwnd, NativeMethods.GWL_STYLE)
+            & ~NativeMethods.WS_THICKFRAME);
     }
 
     // ---- System Tray Icon ----
@@ -766,9 +1022,21 @@ public sealed partial class MainWindow : Window
 
         var hMenu = NativeMethods.CreatePopupMenu();
 
+        var canToggleCpuRam = (_settings.TimeZones?.Length ?? 0) > 0;
         var showCpuRamFlags = NativeMethods.MF_STRING |
-            (_showCpuRam ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED);
+            (_showCpuRam ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED) |
+            (!canToggleCpuRam ? NativeMethods.MF_GRAYED : 0);
         NativeMethods.AppendMenu(hMenu, showCpuRamFlags, 1, "Show CPU and RAM");
+        NativeMethods.AppendMenu(hMenu, NativeMethods.MF_SEPARATOR, 0, null);
+
+        var themeMenu = NativeMethods.CreatePopupMenu();
+        uint CheckIf(string value) => _settings.ThemeOverride == value
+            ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED;
+        NativeMethods.AppendMenu(themeMenu, NativeMethods.MF_STRING | CheckIf("System"), 10, "System default");
+        NativeMethods.AppendMenu(themeMenu, NativeMethods.MF_STRING | CheckIf("Light"), 11, "Light");
+        NativeMethods.AppendMenu(themeMenu, NativeMethods.MF_STRING | CheckIf("Dark"), 12, "Dark");
+        NativeMethods.AppendMenu(hMenu, NativeMethods.MF_POPUP, (nuint)themeMenu, "Theme");
+
         NativeMethods.AppendMenu(hMenu, NativeMethods.MF_SEPARATOR, 0, null);
         NativeMethods.AppendMenu(hMenu, NativeMethods.MF_STRING, 3, "Settings...");
         NativeMethods.AppendMenu(hMenu, NativeMethods.MF_SEPARATOR, 0, null);
@@ -790,7 +1058,8 @@ public sealed partial class MainWindow : Window
                 _showCpuRam = !_showCpuRam;
                 _settings.ShowCpuRam = _showCpuRam;
                 _cpuRamPanel.Visibility = _showCpuRam ? Visibility.Visible : Visibility.Collapsed;
-                _separator.Visibility = _showCpuRam ? Visibility.Visible : Visibility.Collapsed;
+                _separator.Visibility = (_showCpuRam && _timeZoneBindings.Count > 0)
+                    ? Visibility.Visible : Visibility.Collapsed;
                 PositionOnTaskbar();
                 SaveSettings();
                 break;
@@ -800,6 +1069,14 @@ public sealed partial class MainWindow : Window
                 break;
             case 3: // Settings
                 ShowSettingsWindow();
+                break;
+            case 10: // Theme: System
+            case 11: // Theme: Light
+            case 12: // Theme: Dark
+                _settings.ThemeOverride = cmd switch { 11 => "Light", 12 => "Dark", _ => "System" };
+                ApplyThemeOverride();
+                ApplyThemeColors();
+                SaveSettings();
                 break;
         }
     }
