@@ -249,6 +249,20 @@ public sealed partial class MainWindow : Window
 
         if (_darkIcon != IntPtr.Zero)
             UpdateTrayIcon();
+
+        UpdateSettingsWindowTheme(isDark);
+    }
+
+    private void UpdateSettingsWindowTheme(bool isDark)
+    {
+        if (_settingsWindow == null) return;
+        var hwnd = WindowNative.GetWindowHandle(_settingsWindow);
+        int darkMode = isDark ? 1 : 0;
+        NativeMethods.DwmSetWindowAttribute(hwnd,
+            NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
+        var icon = isDark ? _darkIcon : _lightIcon;
+        NativeMethods.SendMessage(hwnd, NativeMethods.WM_SETICON, NativeMethods.ICON_SMALL, icon);
+        NativeMethods.SendMessage(hwnd, NativeMethods.WM_SETICON, NativeMethods.ICON_BIG, icon);
     }
 
     private void PositionOnTaskbar()
@@ -585,9 +599,9 @@ public sealed partial class MainWindow : Window
             NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE);
     }
 
-    private void DataTimer_Tick(object? sender, object e)
+    private async void DataTimer_Tick(object? sender, object e)
     {
-        // Update time zone displays
+        // Update time zone displays (cheap, stays on UI thread)
         foreach (var binding in _timeZoneBindings)
         {
             var time = TimeZoneInfo.ConvertTime(DateTime.Now,
@@ -596,11 +610,17 @@ public sealed partial class MainWindow : Window
             binding.ZoneText.Text = binding.TimeZoneSettings.TimeZoneLabel;
         }
 
-        // Update CPU and RAM
+        PositionOnTaskbar();
+
+        // Read CPU/RAM on background thread to avoid blocking UI
         try
         {
-            var cpu = _cpuCounter.NextValue();
-            var ram = GetCurrentRamUsage();
+            var (cpu, ram) = await Task.Run(() =>
+            {
+                var c = _cpuCounter.NextValue();
+                var r = GetCurrentRamUsage();
+                return (c, r);
+            });
             _lastCpuPercent = cpu;
             _lastRamPercent = ram;
             _cpuValueText.Text = $"{cpu:F0}%";
@@ -612,8 +632,6 @@ public sealed partial class MainWindow : Window
         {
             // Performance counters can occasionally throw
         }
-
-        PositionOnTaskbar();
     }
 
     private double GetCurrentRamUsage()
@@ -668,8 +686,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _topmostTimer.Stop();
-
         var window = new Window { Title = "TimeToolbar Settings" };
         _settingsWindow = window;
 
@@ -699,7 +715,7 @@ public sealed partial class MainWindow : Window
                     {
                         Height = 1,
                         Background = dividerBrush,
-                        Margin = new Thickness(0, 12, 0, 12)
+                        Margin = new Thickness(-16, 12, -16, 12)
                     });
                 }
                 panel.Children.Add(items[i]);
@@ -1084,11 +1100,16 @@ public sealed partial class MainWindow : Window
             }
         };
 
-        window.Content = new ScrollViewer { Content = root };
+        window.Content = new ScrollViewer
+        {
+            Content = root,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollMode = ScrollMode.Enabled,
+            HorizontalScrollMode = ScrollMode.Disabled
+        };
         window.Closed += (s, e) =>
         {
             _settingsWindow = null;
-            _topmostTimer.Start();
         };
         window.Activate();
 
@@ -1100,7 +1121,19 @@ public sealed partial class MainWindow : Window
         var minWidth = (int)(600 * scale);
         var minHeight = (int)(800 * scale);
         settingsAppWindow.Resize(new SizeInt32(minWidth, minHeight));
-        settingsAppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "clock_icon-icons.com_48329.ico"));
+        var isDarkSettings = RootGrid.ActualTheme == ElementTheme.Dark;
+        if (isDarkSettings)
+        {
+            int useDarkMode = 1;
+            NativeMethods.DwmSetWindowAttribute(settingsHwnd,
+                NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDarkMode, sizeof(int));
+            NativeMethods.SendMessage(settingsHwnd, NativeMethods.WM_SETICON, NativeMethods.ICON_SMALL, _darkIcon);
+            NativeMethods.SendMessage(settingsHwnd, NativeMethods.WM_SETICON, NativeMethods.ICON_BIG, _darkIcon);
+        }
+        else
+        {
+            settingsAppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "clock_icon-icons.com_48329.ico"));
+        }
         if (settingsAppWindow.Presenter is OverlappedPresenter settingsPresenter)
         {
             settingsPresenter.IsMinimizable = false;
@@ -1200,13 +1233,6 @@ public sealed partial class MainWindow : Window
 
         var hMenu = NativeMethods.CreatePopupMenu();
 
-        var canToggleCpuRam = (_settings.TimeZones?.Length ?? 0) > 0;
-        var showCpuRamFlags = NativeMethods.MF_STRING |
-            (_showCpuRam ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED) |
-            (!canToggleCpuRam ? NativeMethods.MF_GRAYED : 0);
-        NativeMethods.AppendMenu(hMenu, showCpuRamFlags, 1, "Show CPU and RAM");
-        NativeMethods.AppendMenu(hMenu, NativeMethods.MF_SEPARATOR, 0, null);
-
         var themeMenu = NativeMethods.CreatePopupMenu();
         uint CheckIf(string value) => _settings.ThemeOverride == value
             ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED;
@@ -1232,15 +1258,6 @@ public sealed partial class MainWindow : Window
 
         switch (cmd)
         {
-            case 1: // Toggle CPU/RAM visibility
-                _showCpuRam = !_showCpuRam;
-                _settings.ShowCpuRam = _showCpuRam;
-                _cpuRamPanel.Visibility = _showCpuRam ? Visibility.Visible : Visibility.Collapsed;
-                _separator.Visibility = (_showCpuRam && _timeZoneBindings.Count > 0)
-                    ? Visibility.Visible : Visibility.Collapsed;
-                PositionOnTaskbar();
-                SaveSettings();
-                break;
             case 2: // Quit
                 RemoveTrayIcon();
                 this.Close();

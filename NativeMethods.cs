@@ -30,7 +30,10 @@ public static class NativeMethods
     public const int NIF_ICON = 0x00000002;
     public const int NIF_TIP = 0x00000004;
 
-    // Mouse messages
+    // Window messages
+    public const uint WM_SETICON = 0x0080;
+    public const IntPtr ICON_SMALL = 0;
+    public const IntPtr ICON_BIG = 1;
     public const uint WM_RBUTTONUP = 0x0205;
 
     // Menu flags
@@ -44,6 +47,7 @@ public static class NativeMethods
     public const uint TPM_NONOTIFY = 0x0080;
 
     // DWM constants
+    public const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
     public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
@@ -181,6 +185,9 @@ public static class NativeMethods
     [DllImport("gdi32.dll")]
     public static extern int SetDIBits(IntPtr hdc, IntPtr hbmp, uint start, uint lines,
         byte[] lpvBits, ref BITMAPINFOHEADER lpbmi, uint usage);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
