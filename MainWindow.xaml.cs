@@ -432,6 +432,26 @@ public sealed partial class MainWindow : Window
         return (border, binding);
     }
 
+    private Brush GetUsageBrush(double percent)
+    {
+        if (percent <= 90)
+            return (Brush)Application.Current.Resources["DefaultTextForegroundThemeBrush"];
+
+        // Lerp from default text color to deep red over 90–100%
+        var t = Math.Clamp((percent - 90) / 10.0, 0, 1);
+        var isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+        var defaultColor = isDark
+            ? Windows.UI.Color.FromArgb(255, 255, 255, 255)
+            : Windows.UI.Color.FromArgb(255, 0, 0, 0);
+        var redColor = Windows.UI.Color.FromArgb(255, 180, 30, 30);
+
+        var r = (byte)(defaultColor.R + (redColor.R - defaultColor.R) * t);
+        var g = (byte)(defaultColor.G + (redColor.G - defaultColor.G) * t);
+        var b = (byte)(defaultColor.B + (redColor.B - defaultColor.B) * t);
+
+        return new SolidColorBrush(Windows.UI.Color.FromArgb(255, r, g, b));
+    }
+
     private void TopmostTimer_Tick(object? sender, object e)
     {
         // Aggressively re-assert topmost via Win32 to stay above the taskbar
@@ -453,8 +473,12 @@ public sealed partial class MainWindow : Window
         // Update CPU and RAM
         try
         {
-            _cpuValueText.Text = $"{_cpuCounter.NextValue():F0}%";
-            _ramValueText.Text = $"{GetCurrentRamUsage():F0}%";
+            var cpu = _cpuCounter.NextValue();
+            var ram = GetCurrentRamUsage();
+            _cpuValueText.Text = $"{cpu:F0}%";
+            _ramValueText.Text = $"{ram:F0}%";
+            _cpuValueText.Foreground = GetUsageBrush(cpu);
+            _ramValueText.Foreground = GetUsageBrush(ram);
         }
         catch
         {
