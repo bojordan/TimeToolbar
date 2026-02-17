@@ -3,6 +3,7 @@ namespace TimeToolbar;
 public class Settings
 {
     public int XOffset { get; set; } = 5;
+    public bool ShowCpuRam { get; set; } = true;
 
     public TimeZoneSettings[]? TimeZones { get; set; }
 

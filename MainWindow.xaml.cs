@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Text;
 using Windows.Graphics;
 using WinRT.Interop;
 using static TimeToolbar.Settings;
@@ -29,8 +30,9 @@ public sealed partial class MainWindow : Window
     private TextBlock _ramValueText = null!;
     private Border _cpuRamPanel = null!;
     private Border _separator = null!;
-    private bool _showCpuRam = true;
+    private bool _showCpuRam;
     private bool _use24HourFormat;
+    private Window? _settingsWindow;
 
     private AppWindow _appWindow = null!;
     private IntPtr _hWnd;
@@ -56,6 +58,7 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         _settings = Program.AppSettings ?? new Settings();
+        _showCpuRam = _settings.ShowCpuRam;
 
         if (_settings.TimeZones == null || _settings.TimeZones.Length == 0)
         {
@@ -81,6 +84,13 @@ public sealed partial class MainWindow : Window
 
         // Apply theme-dependent colors (background + accent)
         ApplyThemeColors();
+
+        // Apply initial CPU/RAM visibility from settings
+        if (!_showCpuRam)
+        {
+            _cpuRamPanel.Visibility = Visibility.Collapsed;
+            _separator.Visibility = Visibility.Collapsed;
+        }
 
         // Set up system tray icon
         SetupTrayIcon();
@@ -535,6 +545,191 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    // ---- Settings Window ----
+
+    private void ShowSettingsWindow()
+    {
+        if (_settingsWindow != null)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        _topmostTimer.Stop();
+
+        var window = new Window { Title = "TimeToolbar Settings" };
+        _settingsWindow = window;
+
+        var allTimeZones = TimeZoneInfo.GetSystemTimeZones();
+
+        var root = new StackPanel
+        {
+            Padding = new Thickness(24),
+            Spacing = 16
+        };
+
+        // Show CPU/RAM toggle
+        var cpuRamToggle = new ToggleSwitch
+        {
+            Header = "Show CPU and RAM",
+            IsOn = _showCpuRam
+        };
+        root.Children.Add(cpuRamToggle);
+
+        // Position offset
+        var offsetBox = new NumberBox
+        {
+            Header = "Position Offset",
+            Value = _settings.XOffset,
+            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
+            Minimum = -9999,
+            Maximum = 9999
+        };
+        root.Children.Add(offsetBox);
+
+        // Time zones header
+        root.Children.Add(new TextBlock
+        {
+            Text = "Time Zones",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 8, 0, 0)
+        });
+
+        // Time zone rows
+        var tzRowsPanel = new StackPanel { Spacing = 8 };
+        var tzRows = new List<(ComboBox Combo, TextBox Label, StackPanel Row)>();
+
+        void AddTimeZoneRow(string? tzId = null, string? label = null)
+        {
+            var combo = new ComboBox
+            {
+                ItemsSource = allTimeZones,
+                PlaceholderText = "Select time zone...",
+                MinWidth = 300
+            };
+            if (tzId != null)
+                combo.SelectedItem = allTimeZones.FirstOrDefault(tz => tz.Id == tzId);
+
+            var labelBox = new TextBox
+            {
+                PlaceholderText = "Label",
+                Text = label ?? "",
+                Width = 90
+            };
+
+            var removeBtn = new Button
+            {
+                Content = "\u2715",
+                Padding = new Thickness(8, 4, 8, 4),
+                VerticalAlignment = VerticalAlignment.Bottom
+            };
+
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8
+            };
+            row.Children.Add(combo);
+            row.Children.Add(labelBox);
+            row.Children.Add(removeBtn);
+
+            var rowTuple = (combo, labelBox, row);
+            tzRows.Add(rowTuple);
+            tzRowsPanel.Children.Add(row);
+
+            removeBtn.Click += (s, e) =>
+            {
+                tzRows.Remove(rowTuple);
+                tzRowsPanel.Children.Remove(row);
+            };
+        }
+
+        if (_settings.TimeZones != null)
+        {
+            foreach (var tz in _settings.TimeZones)
+                AddTimeZoneRow(tz.TimeZoneId, tz.TimeZoneLabel);
+        }
+
+        root.Children.Add(tzRowsPanel);
+
+        var addBtn = new Button { Content = "+ Add Time Zone" };
+        addBtn.Click += (s, e) => AddTimeZoneRow();
+        root.Children.Add(addBtn);
+
+        // Save / Cancel buttons
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 8,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+
+        var saveBtn = new Button
+        {
+            Content = "Save",
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"]
+        };
+        var cancelBtn = new Button { Content = "Cancel" };
+        buttonPanel.Children.Add(saveBtn);
+        buttonPanel.Children.Add(cancelBtn);
+        root.Children.Add(buttonPanel);
+
+        saveBtn.Click += (s, e) =>
+        {
+            // Collect time zones
+            var newTimeZones = new List<TimeZoneSettings>();
+            foreach (var (combo, labelBox, _) in tzRows)
+            {
+                if (combo.SelectedItem is TimeZoneInfo tz)
+                {
+                    newTimeZones.Add(new TimeZoneSettings
+                    {
+                        TimeZoneId = tz.Id,
+                        TimeZoneLabel = string.IsNullOrWhiteSpace(labelBox.Text)
+                            ? tz.StandardName : labelBox.Text
+                    });
+                }
+            }
+
+            _settings.TimeZones = newTimeZones.ToArray();
+            _settings.XOffset = double.IsNaN(offsetBox.Value) ? 0 : (int)offsetBox.Value;
+            _showCpuRam = cpuRamToggle.IsOn;
+            _settings.ShowCpuRam = _showCpuRam;
+
+            // Rebuild the toolbar UI
+            ContentPanel.Children.Clear();
+            _timeZoneBindings.Clear();
+            BuildUI();
+            if (!_showCpuRam)
+            {
+                _cpuRamPanel.Visibility = Visibility.Collapsed;
+                _separator.Visibility = Visibility.Collapsed;
+            }
+            ApplyThemeColors();
+            DataTimer_Tick(null!, null!);
+
+            SaveSettings();
+            window.Close();
+        };
+
+        cancelBtn.Click += (s, e) => window.Close();
+
+        window.Content = new ScrollViewer { Content = root };
+        window.Closed += (s, e) =>
+        {
+            _settingsWindow = null;
+            _topmostTimer.Start();
+        };
+        window.Activate();
+
+        var settingsHwnd = WindowNative.GetWindowHandle(window);
+        var settingsAppWindow = AppWindow.GetFromWindowId(
+            Win32Interop.GetWindowIdFromWindow(settingsHwnd));
+        settingsAppWindow.Resize(new SizeInt32(520, 500));
+    }
+
     // ---- System Tray Icon ----
 
     private void SetupTrayIcon()
@@ -575,6 +770,8 @@ public sealed partial class MainWindow : Window
             (_showCpuRam ? NativeMethods.MF_CHECKED : NativeMethods.MF_UNCHECKED);
         NativeMethods.AppendMenu(hMenu, showCpuRamFlags, 1, "Show CPU and RAM");
         NativeMethods.AppendMenu(hMenu, NativeMethods.MF_SEPARATOR, 0, null);
+        NativeMethods.AppendMenu(hMenu, NativeMethods.MF_STRING, 3, "Settings...");
+        NativeMethods.AppendMenu(hMenu, NativeMethods.MF_SEPARATOR, 0, null);
         NativeMethods.AppendMenu(hMenu, NativeMethods.MF_STRING, 2, "Quit");
 
         NativeMethods.GetCursorPos(out var pt);
@@ -591,13 +788,18 @@ public sealed partial class MainWindow : Window
         {
             case 1: // Toggle CPU/RAM visibility
                 _showCpuRam = !_showCpuRam;
+                _settings.ShowCpuRam = _showCpuRam;
                 _cpuRamPanel.Visibility = _showCpuRam ? Visibility.Visible : Visibility.Collapsed;
                 _separator.Visibility = _showCpuRam ? Visibility.Visible : Visibility.Collapsed;
                 PositionOnTaskbar();
+                SaveSettings();
                 break;
             case 2: // Quit
                 RemoveTrayIcon();
                 this.Close();
+                break;
+            case 3: // Settings
+                ShowSettingsWindow();
                 break;
         }
     }
