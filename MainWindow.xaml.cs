@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
     private Border _cpuRamPanel = null!;
     private Border _separator = null!;
     private bool _showCpuRam = true;
+    private bool _use24HourFormat;
 
     private AppWindow _appWindow = null!;
     private IntPtr _hWnd;
@@ -422,6 +423,9 @@ public sealed partial class MainWindow : Window
         border.PointerExited += (s, e) =>
             border.Background = null;
 
+        // Double-tap to toggle 12h/24h format
+        border.DoubleTapped += TimeZonePanel_DoubleTapped;
+
         var binding = new TimeZoneLabelBinding
         {
             TimeZoneSettings = tz,
@@ -466,7 +470,7 @@ public sealed partial class MainWindow : Window
         {
             var time = TimeZoneInfo.ConvertTime(DateTime.Now,
                 TimeZoneInfo.FindSystemTimeZoneById(binding.TimeZoneSettings.TimeZoneId));
-            binding.TimeText.Text = $"{time:t}";
+            binding.TimeText.Text = _use24HourFormat ? $"{time:HH:mm}" : $"{time:h:mm tt}";
             binding.ZoneText.Text = binding.TimeZoneSettings.TimeZoneLabel;
         }
 
@@ -514,6 +518,17 @@ public sealed partial class MainWindow : Window
     private void CpuRamPanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         Process.Start(new ProcessStartInfo("taskmgr") { UseShellExecute = true });
+    }
+
+    private void TimeZonePanel_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        _use24HourFormat = !_use24HourFormat;
+        foreach (var binding in _timeZoneBindings)
+        {
+            var time = TimeZoneInfo.ConvertTime(DateTime.Now,
+                TimeZoneInfo.FindSystemTimeZoneById(binding.TimeZoneSettings.TimeZoneId));
+            binding.TimeText.Text = _use24HourFormat ? $"{time:HH:mm}" : $"{time:h:mm tt}";
+        }
     }
 
     // ---- System Tray Icon ----
