@@ -22,6 +22,7 @@ public static class NativeMethods
 
     // Shell_NotifyIcon commands
     public const int NIM_ADD = 0x00000000;
+    public const int NIM_MODIFY = 0x00000001;
     public const int NIM_DELETE = 0x00000002;
 
     // NotifyIconData flags
@@ -69,6 +70,44 @@ public static class NativeMethods
         public int Y;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ICONINFO
+    {
+        public bool fIcon;
+        public int xHotspot;
+        public int yHotspot;
+        public IntPtr hbmMask;
+        public IntPtr hbmColor;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAP
+    {
+        public int bmType;
+        public int bmWidth;
+        public int bmHeight;
+        public int bmWidthBytes;
+        public ushort bmPlanes;
+        public ushort bmBitsPixel;
+        public IntPtr bmBits;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BITMAPINFOHEADER
+    {
+        public uint biSize;
+        public int biWidth;
+        public int biHeight;
+        public ushort biPlanes;
+        public ushort biBitCount;
+        public uint biCompression;
+        public uint biSizeImage;
+        public int biXPelsPerMeter;
+        public int biYPelsPerMeter;
+        public uint biClrUsed;
+        public uint biClrImportant;
+    }
+
     public delegate IntPtr SUBCLASSPROC(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, IntPtr uIdSubclass, IntPtr dwRefData);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -113,6 +152,35 @@ public static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO piconinfo);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr CreateIconIndirect(ref ICONINFO piconinfo);
+
+    [DllImport("user32.dll")]
+    public static extern bool DestroyIcon(IntPtr hIcon);
+
+    [DllImport("gdi32.dll")]
+    public static extern int GetObject(IntPtr hObject, int nCount, ref BITMAP lpObject);
+
+    [DllImport("gdi32.dll")]
+    public static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    public static extern bool DeleteObject(IntPtr hObject);
+
+    [DllImport("gdi32.dll")]
+    public static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint start, uint lines,
+        byte[] lpvBits, ref BITMAPINFOHEADER lpbmi, uint usage);
+
+    [DllImport("gdi32.dll")]
+    public static extern int SetDIBits(IntPtr hdc, IntPtr hbmp, uint start, uint lines,
+        byte[] lpvBits, ref BITMAPINFOHEADER lpbmi, uint usage);
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);

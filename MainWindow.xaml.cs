@@ -51,6 +51,8 @@ public sealed partial class MainWindow : Window
     private NativeMethods.SUBCLASSPROC? _subclassProc;
     private const int WM_TRAYICON = 0x8000 + 1;
     private const int TRAY_ICON_ID = 1;
+    private IntPtr _lightIcon;
+    private IntPtr _darkIcon;
 
     private class TimeZoneLabelBinding
     {
@@ -244,6 +246,9 @@ public sealed partial class MainWindow : Window
         _ramValueText.Foreground = GetUsageBrush(_lastRamPercent);
         foreach (var binding in _timeZoneBindings)
             binding.ZoneText.Foreground = accentBrush;
+
+        if (_darkIcon != IntPtr.Zero)
+            UpdateTrayIcon();
     }
 
     private void PositionOnTaskbar()
@@ -1110,7 +1115,10 @@ public sealed partial class MainWindow : Window
 
     private void SetupTrayIcon()
     {
-        var hIcon = NativeMethods.ExtractIcon(IntPtr.Zero, Environment.ProcessPath!, 0);
+        _lightIcon = NativeMethods.ExtractIcon(IntPtr.Zero, Environment.ProcessPath!, 0);
+        _darkIcon = InvertIcon(_lightIcon);
+
+        var isDark = RootGrid.ActualTheme == ElementTheme.Dark;
 
         _notifyIconData = new NativeMethods.NOTIFYICONDATA
         {
@@ -1119,11 +1127,61 @@ public sealed partial class MainWindow : Window
             uID = TRAY_ICON_ID,
             uFlags = NativeMethods.NIF_ICON | NativeMethods.NIF_MESSAGE | NativeMethods.NIF_TIP,
             uCallbackMessage = WM_TRAYICON,
-            hIcon = hIcon,
+            hIcon = isDark ? _darkIcon : _lightIcon,
             szTip = "TimeToolbar"
         };
 
         NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_ADD, ref _notifyIconData);
+    }
+
+    private void UpdateTrayIcon()
+    {
+        var isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+        _notifyIconData.hIcon = isDark ? _darkIcon : _lightIcon;
+        _notifyIconData.uFlags = NativeMethods.NIF_ICON;
+        NativeMethods.Shell_NotifyIcon(NativeMethods.NIM_MODIFY, ref _notifyIconData);
+    }
+
+    private static IntPtr InvertIcon(IntPtr hIcon)
+    {
+        NativeMethods.GetIconInfo(hIcon, out var iconInfo);
+
+        var bmp = new NativeMethods.BITMAP();
+        NativeMethods.GetObject(iconInfo.hbmColor, Marshal.SizeOf<NativeMethods.BITMAP>(), ref bmp);
+
+        var hdc = NativeMethods.CreateCompatibleDC(IntPtr.Zero);
+
+        var bi = new NativeMethods.BITMAPINFOHEADER
+        {
+            biSize = (uint)Marshal.SizeOf<NativeMethods.BITMAPINFOHEADER>(),
+            biWidth = bmp.bmWidth,
+            biHeight = -bmp.bmHeight, // top-down
+            biPlanes = 1,
+            biBitCount = 32,
+            biCompression = 0
+        };
+
+        var pixels = new byte[bmp.bmWidth * bmp.bmHeight * 4];
+        NativeMethods.GetDIBits(hdc, iconInfo.hbmColor, 0, (uint)bmp.bmHeight, pixels, ref bi, 0);
+
+        // Invert RGB using premultiplied alpha: new_channel = alpha - old_channel
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            var a = pixels[i + 3];
+            pixels[i] = (byte)(a - pixels[i]);         // B
+            pixels[i + 1] = (byte)(a - pixels[i + 1]); // G
+            pixels[i + 2] = (byte)(a - pixels[i + 2]); // R
+        }
+
+        NativeMethods.SetDIBits(hdc, iconInfo.hbmColor, 0, (uint)bmp.bmHeight, pixels, ref bi, 0);
+        NativeMethods.DeleteDC(hdc);
+
+        var newIcon = NativeMethods.CreateIconIndirect(ref iconInfo);
+
+        NativeMethods.DeleteObject(iconInfo.hbmColor);
+        NativeMethods.DeleteObject(iconInfo.hbmMask);
+
+        return newIcon;
     }
 
     private void RemoveTrayIcon()
