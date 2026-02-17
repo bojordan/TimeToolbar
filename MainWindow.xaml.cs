@@ -676,6 +676,89 @@ public sealed partial class MainWindow : Window
             Spacing = 16
         };
 
+        var cardBrush = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"];
+        var cardStroke = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"];
+        var dividerBrush = (Brush)Application.Current.Resources["DividerStrokeColorDefaultBrush"];
+        var cardRadius = new CornerRadius(8);
+        var cardPadding = new Thickness(16);
+
+        // Helper: StackPanel with dividers between items
+        StackPanel MakeDividedStack(params UIElement[] items)
+        {
+            var panel = new StackPanel { Spacing = 0 };
+            for (int i = 0; i < items.Length; i++)
+            {
+                if (i > 0)
+                {
+                    panel.Children.Add(new Border
+                    {
+                        Height = 1,
+                        Background = dividerBrush,
+                        Margin = new Thickness(0, 12, 0, 12)
+                    });
+                }
+                panel.Children.Add(items[i]);
+            }
+            return panel;
+        }
+
+        // Helper: label on left, toggle on right
+        Grid MakeToggleRow(string label, ToggleSwitch toggle)
+        {
+            toggle.Header = null;
+            toggle.OnContent = null;
+            toggle.OffContent = null;
+            toggle.MinWidth = 0;
+            toggle.HorizontalAlignment = HorizontalAlignment.Right;
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var text = new TextBlock
+            {
+                Text = label,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(text, 0);
+            Grid.SetColumn(toggle, 1);
+            grid.Children.Add(text);
+            grid.Children.Add(toggle);
+            return grid;
+        }
+
+        // -- Display group --
+        root.Children.Add(new TextBlock
+        {
+            Text = "Display",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold
+        });
+
+        var hasTzInitially = (_settings.TimeZones?.Length ?? 0) > 0;
+        var cpuRamToggle = new ToggleSwitch
+        {
+            IsOn = hasTzInitially ? _showCpuRam : true,
+            IsEnabled = hasTzInitially
+        };
+
+        var timeFormatToggle = new ToggleSwitch
+        {
+            IsOn = _use24HourFormat
+        };
+
+        var displayCard = new Border
+        {
+            Background = cardBrush,
+            BorderBrush = cardStroke,
+            BorderThickness = new Thickness(1),
+            CornerRadius = cardRadius,
+            Padding = cardPadding,
+            Child = MakeDividedStack(
+                MakeToggleRow("Show CPU and RAM", cpuRamToggle),
+                MakeToggleRow("24-hour time", timeFormatToggle)
+            )
+        };
+        root.Children.Add(displayCard);
+
         // -- Appearance group --
         root.Children.Add(new TextBlock
         {
@@ -686,7 +769,6 @@ public sealed partial class MainWindow : Window
 
         var themeCombo = new ComboBox
         {
-            Header = "Theme",
             Items = { "System default", "Light", "Dark" },
             SelectedIndex = _settings.ThemeOverride switch
             {
@@ -695,66 +777,82 @@ public sealed partial class MainWindow : Window
                 _ => 0
             }
         };
-        root.Children.Add(themeCombo);
+
+        var themeRow = new Grid();
+        themeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        themeRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var themeLabel = new TextBlock
+        {
+            Text = "Theme",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(themeLabel, 0);
+        Grid.SetColumn(themeCombo, 1);
+        themeRow.Children.Add(themeLabel);
+        themeRow.Children.Add(themeCombo);
 
         var borderToggle = new ToggleSwitch
         {
-            Header = "Show border",
             IsOn = _settings.ShowBorder
         };
-        root.Children.Add(borderToggle);
 
-        // -- Display group --
-        root.Children.Add(new TextBlock
+        var xOffsetBox = new TextBox
         {
-            Text = "Display",
-            FontSize = 14,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 8, 0, 0)
-        });
-
-        var hasTzInitially = (_settings.TimeZones?.Length ?? 0) > 0;
-        var cpuRamToggle = new ToggleSwitch
-        {
-            Header = "Show CPU and RAM",
-            IsOn = hasTzInitially ? _showCpuRam : true,
-            IsEnabled = hasTzInitially
+            Text = _settings.XOffset.ToString(),
+            Width = 60,
+            HorizontalTextAlignment = TextAlignment.Center
         };
-        root.Children.Add(cpuRamToggle);
-
-        var timeFormatToggle = new ToggleSwitch
+        var yOffsetBox = new TextBox
         {
-            Header = "24-hour time",
-            IsOn = _use24HourFormat
+            Text = _settings.YOffset.ToString(),
+            Width = 60,
+            HorizontalTextAlignment = TextAlignment.Center
         };
-        root.Children.Add(timeFormatToggle);
 
-        // -- Layout group --
-        root.Children.Add(new TextBlock
+        var layoutRow = new Grid();
+        layoutRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        layoutRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var layoutLabel = new TextBlock
         {
             Text = "Layout",
-            FontSize = 14,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 8, 0, 0)
-        });
-
-        var offsetBox = new NumberBox
-        {
-            Header = "Position Offset",
-            Value = _settings.XOffset,
-            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline,
-            Minimum = -9999,
-            Maximum = 9999
+            VerticalAlignment = VerticalAlignment.Center
         };
-        root.Children.Add(offsetBox);
+        var offsetsPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        offsetsPanel.Children.Add(new TextBlock { Text = "X", VerticalAlignment = VerticalAlignment.Center });
+        offsetsPanel.Children.Add(xOffsetBox);
+        offsetsPanel.Children.Add(new TextBlock { Text = "Y", VerticalAlignment = VerticalAlignment.Center });
+        offsetsPanel.Children.Add(yOffsetBox);
+        Grid.SetColumn(layoutLabel, 0);
+        Grid.SetColumn(offsetsPanel, 1);
+        layoutRow.Children.Add(layoutLabel);
+        layoutRow.Children.Add(offsetsPanel);
+
+        var appearanceCard = new Border
+        {
+            Background = cardBrush,
+            BorderBrush = cardStroke,
+            BorderThickness = new Thickness(1),
+            CornerRadius = cardRadius,
+            Padding = cardPadding,
+            Child = MakeDividedStack(
+                themeRow,
+                MakeToggleRow("Show border", borderToggle),
+                layoutRow
+            )
+        };
+        root.Children.Add(appearanceCard);
 
         // -- Time Zones group --
         root.Children.Add(new TextBlock
         {
             Text = "Time Zones",
             FontSize = 14,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 8, 0, 0)
+            FontWeight = FontWeights.SemiBold
         });
 
         // Time zone rows
@@ -901,11 +999,19 @@ public sealed partial class MainWindow : Window
                 AddTimeZoneRow(tz.TimeZoneId, tz.TimeZoneLabel);
         }
 
-        root.Children.Add(tzRowsPanel);
-
         var addBtn = new Button { Content = "+ Add Time Zone" };
         addBtn.Click += (s, e) => AddTimeZoneRow();
-        root.Children.Add(addBtn);
+
+        var tzCard = new Border
+        {
+            Background = cardBrush,
+            BorderBrush = cardStroke,
+            BorderThickness = new Thickness(1),
+            CornerRadius = cardRadius,
+            Padding = cardPadding,
+            Child = MakeDividedStack(tzRowsPanel, addBtn)
+        };
+        root.Children.Add(tzCard);
 
         // Wire up immediate-apply handlers
         cpuRamToggle.Toggled += (s, e) =>
@@ -953,11 +1059,24 @@ public sealed partial class MainWindow : Window
             SaveSettings();
         };
 
-        offsetBox.ValueChanged += (s, e) =>
+        xOffsetBox.TextChanged += (s, e) =>
         {
-            _settings.XOffset = double.IsNaN(offsetBox.Value) ? 0 : (int)offsetBox.Value;
-            PositionOnTaskbar();
-            SaveSettings();
+            if (int.TryParse(xOffsetBox.Text, out var val))
+            {
+                _settings.XOffset = val;
+                PositionOnTaskbar();
+                SaveSettings();
+            }
+        };
+
+        yOffsetBox.TextChanged += (s, e) =>
+        {
+            if (int.TryParse(yOffsetBox.Text, out var val))
+            {
+                _settings.YOffset = Math.Min(val, 0);
+                PositionOnTaskbar();
+                SaveSettings();
+            }
         };
 
         window.Content = new ScrollViewer { Content = root };
@@ -976,6 +1095,7 @@ public sealed partial class MainWindow : Window
         var minWidth = (int)(600 * scale);
         var minHeight = (int)(800 * scale);
         settingsAppWindow.Resize(new SizeInt32(minWidth, minHeight));
+        settingsAppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "clock_icon-icons.com_48329.ico"));
         if (settingsAppWindow.Presenter is OverlappedPresenter settingsPresenter)
         {
             settingsPresenter.IsMinimizable = false;
