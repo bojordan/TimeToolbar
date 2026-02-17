@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
     private TextBlock _ramValueText = null!;
     private Border _cpuRamPanel = null!;
     private Border _separator = null!;
+    private readonly List<Border> _separators = new();
     private bool _showCpuRam;
     private bool _use24HourFormat;
     private Window? _settingsWindow;
@@ -247,6 +248,10 @@ public sealed partial class MainWindow : Window
         foreach (var binding in _timeZoneBindings)
             binding.ZoneText.Foreground = accentBrush;
 
+        var separatorBrush = (Brush)Application.Current.Resources["SystemControlForegroundBaseMediumLowBrush"];
+        foreach (var sep in _separators)
+            sep.Background = separatorBrush;
+
         if (_darkIcon != IntPtr.Zero)
             UpdateTrayIcon();
 
@@ -398,40 +403,60 @@ public sealed partial class MainWindow : Window
         File.WriteAllText(path, json);
     }
 
+    private const string StartupRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string StartupValueName = "TimeToolbar";
+
+    private static bool IsRunOnStartupEnabled()
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegistryKey);
+        return key?.GetValue(StartupValueName) != null;
+    }
+
+    private static void SetRunOnStartup(bool enable)
+    {
+        using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(StartupRegistryKey, writable: true);
+        if (key == null) return;
+        if (enable)
+            key.SetValue(StartupValueName, $"\"{Environment.ProcessPath}\"");
+        else
+            key.DeleteValue(StartupValueName, throwOnMissingValue: false);
+    }
+
     private void BuildUI()
     {
+        _separators.Clear();
+
         // CPU/RAM section
         _cpuRamPanel = CreateCpuRamPanel();
         ContentPanel.Children.Add(_cpuRamPanel);
 
         // Vertical separator
-        _separator = new Border
-        {
-            Width = 1,
-            Background = (Brush)Application.Current.Resources["SystemControlForegroundBaseMediumLowBrush"],
-            Opacity = 0.4,
-            Margin = new Thickness(6, 8, 6, 8)
-        };
+        _separator = CreateSeparator();
         ContentPanel.Children.Add(_separator);
 
         // Time zone panels with separators between them
         for (int i = 0; i < _settings.TimeZones!.Length; i++)
         {
             if (i > 0)
-            {
-                ContentPanel.Children.Add(new Border
-                {
-                    Width = 1,
-                    Background = (Brush)Application.Current.Resources["SystemControlForegroundBaseMediumLowBrush"],
-                    Opacity = 0.4,
-                    Margin = new Thickness(6, 8, 6, 8)
-                });
-            }
+                ContentPanel.Children.Add(CreateSeparator());
 
             var (panel, binding) = CreateTimeZonePanel(_settings.TimeZones[i]);
             ContentPanel.Children.Add(panel);
             _timeZoneBindings.Add(binding);
         }
+    }
+
+    private Border CreateSeparator()
+    {
+        var sep = new Border
+        {
+            Width = 1,
+            Background = (Brush)Application.Current.Resources["SystemControlForegroundBaseMediumLowBrush"],
+            Opacity = 0.4,
+            Margin = new Thickness(6, 8, 6, 8)
+        };
+        _separators.Add(sep);
+        return sep;
     }
 
     private Border CreateCpuRamPanel()
@@ -746,10 +771,10 @@ public sealed partial class MainWindow : Window
             return grid;
         }
 
-        // -- Display group --
+        // -- Behavior group --
         root.Children.Add(new TextBlock
         {
-            Text = "Display",
+            Text = "Behavior",
             FontSize = 14,
             FontWeight = FontWeights.SemiBold
         });
@@ -766,7 +791,12 @@ public sealed partial class MainWindow : Window
             IsOn = _use24HourFormat
         };
 
-        var displayCard = new Border
+        var startupToggle = new ToggleSwitch
+        {
+            IsOn = IsRunOnStartupEnabled()
+        };
+
+        var behaviorCard = new Border
         {
             Background = cardBrush,
             BorderBrush = cardStroke,
@@ -775,10 +805,11 @@ public sealed partial class MainWindow : Window
             Padding = cardPadding,
             Child = MakeDividedStack(
                 MakeToggleRow("Show CPU and RAM", cpuRamToggle),
-                MakeToggleRow("24-hour time", timeFormatToggle)
+                MakeToggleRow("24-hour time", timeFormatToggle),
+                MakeToggleRow("Run on startup", startupToggle)
             )
         };
-        root.Children.Add(displayCard);
+        root.Children.Add(behaviorCard);
 
         // -- Appearance group --
         root.Children.Add(new TextBlock
@@ -1035,6 +1066,10 @@ public sealed partial class MainWindow : Window
         root.Children.Add(tzCard);
 
         // Wire up immediate-apply handlers
+        startupToggle.Toggled += (s, e) =>
+        {
+            SetRunOnStartup(startupToggle.IsOn);
+        };
         cpuRamToggle.Toggled += (s, e) =>
         {
             _showCpuRam = cpuRamToggle.IsOn;
