@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Management;
 using System.Runtime.InteropServices;
 using Microsoft.UI;
-using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -87,19 +86,6 @@ public sealed partial class MainWindow : Window
         // Initial data population
         DataTimer_Tick(null!, null!);
 
-        // Move off-screen before first render, then force a hide/show cycle
-        // to initialize the transparent backdrop, then move into position.
-        _appWindow.Move(new PointInt32(-10000, -10000));
-        var initTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
-        initTimer.Tick += (s, e) =>
-        {
-            initTimer.Stop();
-            _appWindow.Hide();
-            _appWindow.Show();
-            PositionOnTaskbar();
-        };
-        initTimer.Start();
-
         this.Closed += MainWindow_Closed;
     }
 
@@ -119,7 +105,7 @@ public sealed partial class MainWindow : Window
             presenter.IsAlwaysOnTop = true;
         }
 
-        // Strip the resize frame (removes the thick white border)
+        // Strip the resize frame
         var style = NativeMethods.GetWindowLongPtr(_hWnd, NativeMethods.GWL_STYLE);
         NativeMethods.SetWindowLongPtr(_hWnd, NativeMethods.GWL_STYLE,
             style & ~NativeMethods.WS_THICKFRAME & ~NativeMethods.WS_CAPTION);
@@ -132,14 +118,16 @@ public sealed partial class MainWindow : Window
         NativeMethods.DwmSetWindowAttribute(_hWnd, NativeMethods.DWMWA_BORDER_COLOR,
             ref colorNone, sizeof(int));
 
-        // Extend DWM frame into client area - this makes the surface behind
-        // the acrylic transparent instead of opaque black
-        var margins = new NativeMethods.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
-        NativeMethods.DwmExtendFrameIntoClientArea(_hWnd, ref margins);
+        // DWM rounded corners for pill shape
+        int cornerPref = NativeMethods.DWMWCP_ROUND;
+        NativeMethods.DwmSetWindowAttribute(_hWnd, NativeMethods.DWMWA_WINDOW_CORNER_PREFERENCE,
+            ref cornerPref, sizeof(int));
 
-        // Transparent acrylic: TintOpacity=0 + LuminosityOpacity=0 + DWM frame extension
-        // = fully transparent backdrop (blur of transparent = transparent)
-        this.SystemBackdrop = new TransparentBackdrop(_hWnd);
+        // Opaque background enables ClearType subpixel text rendering
+        var isDark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
+        RootGrid.Background = new SolidColorBrush(
+            isDark ? Windows.UI.Color.FromArgb(255, 40, 40, 40)
+                   : Windows.UI.Color.FromArgb(255, 240, 240, 240));
 
         // WS_EX_TOOLWINDOW: hide from Alt+Tab
         // WS_EX_NOACTIVATE: don't steal focus when clicked
@@ -152,50 +140,6 @@ public sealed partial class MainWindow : Window
         NativeMethods.SetWindowSubclass(_hWnd, _subclassProc, 0, IntPtr.Zero);
 
         PositionOnTaskbar();
-    }
-
-    private class TransparentBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
-    {
-        private DesktopAcrylicController? _controller;
-        private readonly IntPtr _hWnd;
-
-        public TransparentBackdrop(IntPtr hWnd) => _hWnd = hWnd;
-
-        protected override void OnTargetConnected(
-            Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop connectedTarget,
-            Microsoft.UI.Xaml.XamlRoot xamlRoot)
-        {
-            base.OnTargetConnected(connectedTarget, xamlRoot);
-
-            // DesktopAcrylicController with zero tint/luminosity, combined with
-            // DwmExtendFrameIntoClientArea(-1), produces a transparent backdrop.
-            // The acrylic blurs what's behind the window; with the extended DWM frame,
-            // what's behind is the desktop compositor surface (transparent).
-            _controller = new DesktopAcrylicController
-            {
-                TintOpacity = 0f,
-                LuminosityOpacity = 0f,
-                TintColor = Windows.UI.Color.FromArgb(0, 0, 0, 0),
-                FallbackColor = Windows.UI.Color.FromArgb(0, 0, 0, 0)
-            };
-
-            _controller.AddSystemBackdropTarget(connectedTarget);
-            _controller.SetSystemBackdropConfiguration(
-                GetDefaultSystemBackdropConfiguration(connectedTarget, xamlRoot));
-
-            // Re-apply DWM frame extension AFTER the acrylic controller is connected,
-            // so the DWM surface behind the acrylic is transparent from the first frame.
-            var margins = new NativeMethods.MARGINS { Left = -1, Right = -1, Top = -1, Bottom = -1 };
-            NativeMethods.DwmExtendFrameIntoClientArea(_hWnd, ref margins);
-        }
-
-        protected override void OnTargetDisconnected(
-            Microsoft.UI.Composition.ICompositionSupportsSystemBackdrop disconnectedTarget)
-        {
-            base.OnTargetDisconnected(disconnectedTarget);
-            _controller?.Dispose();
-            _controller = null;
-        }
     }
 
     private void PositionOnTaskbar()
@@ -218,15 +162,18 @@ public sealed partial class MainWindow : Window
 
         // Calculate content width in DIPs then scale to physical pixels
         var tzCount = _settings.TimeZones?.Length ?? 0;
-        var cpuRamWidth = _showCpuRam ? 110 : 0;
-        var contentWidthDips = cpuRamWidth + (tzCount * 95) + 24;
+        var cpuRamWidth = _showCpuRam ? 105 : 0;
+        var tzSeparators = tzCount > 1 ? (tzCount - 1) * 13 : 0;
+        var contentWidthDips = cpuRamWidth + (tzCount * 82) + tzSeparators;
         var physicalWidth = (int)(contentWidthDips * scale);
 
+        // Inset the pill within the taskbar with padding
+        var inset = (int)(5 * scale);
         _appWindow.MoveAndResize(new RectInt32(
-            workArea.X + (int)((baseOffset + _settings.XOffset) * scale),
-            taskbarTop,
+            workArea.X + (int)((baseOffset + _settings.XOffset) * scale) + inset,
+            taskbarTop + inset,
             physicalWidth,
-            taskbarHeight));
+            taskbarHeight - (inset * 2)));
     }
 
     private void BuildUI()
@@ -245,10 +192,21 @@ public sealed partial class MainWindow : Window
         };
         ContentPanel.Children.Add(_separator);
 
-        // Time zone panels
-        foreach (var tz in _settings.TimeZones!)
+        // Time zone panels with separators between them
+        for (int i = 0; i < _settings.TimeZones!.Length; i++)
         {
-            var (panel, binding) = CreateTimeZonePanel(tz);
+            if (i > 0)
+            {
+                ContentPanel.Children.Add(new Border
+                {
+                    Width = 1,
+                    Background = (Brush)Application.Current.Resources["SystemControlForegroundBaseMediumLowBrush"],
+                    Opacity = 0.4,
+                    Margin = new Thickness(6, 8, 6, 8)
+                });
+            }
+
+            var (panel, binding) = CreateTimeZonePanel(_settings.TimeZones[i]);
             ContentPanel.Children.Add(panel);
             _timeZoneBindings.Add(binding);
         }
@@ -292,11 +250,19 @@ public sealed partial class MainWindow : Window
             MinWidth = 36
         };
 
-        var cpuRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var cpuRow = new Grid();
+        cpuRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        cpuRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(cpuLabel, 0);
+        Grid.SetColumn(_cpuValueText, 1);
         cpuRow.Children.Add(cpuLabel);
         cpuRow.Children.Add(_cpuValueText);
 
-        var ramRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var ramRow = new Grid();
+        ramRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        ramRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(ramLabel, 0);
+        Grid.SetColumn(_ramValueText, 1);
         ramRow.Children.Add(ramLabel);
         ramRow.Children.Add(_ramValueText);
 

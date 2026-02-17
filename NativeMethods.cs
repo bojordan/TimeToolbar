@@ -43,6 +43,9 @@ public static class NativeMethods
     // DWM constants
     public const int DWMWA_BORDER_COLOR = 34;
     public const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
+    public const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    public const int DWMWCP_ROUND = 2;
+    public const int DWMWCP_ROUNDSMALL = 3;
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct NOTIFYICONDATA

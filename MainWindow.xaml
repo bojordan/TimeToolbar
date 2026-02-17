@@ -5,11 +5,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="TimeToolbar">
 
-    <Grid x:Name="RootGrid" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Background="Transparent">
+    <Grid x:Name="RootGrid" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
         <StackPanel x:Name="ContentPanel"
                     Orientation="Horizontal"
                     VerticalAlignment="Center"
-                    HorizontalAlignment="Left"
+                    HorizontalAlignment="Center"
                     Spacing="0"
                     Padding="4,0" />
     </Grid>
