@@ -25,6 +25,21 @@
     <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
   </PropertyGroup>
 
+  <!-- Derive version from git tags -->
+  <Target Name="SetGitVersion" BeforeTargets="PrepareForBuild">
+    <Exec Command="git describe --tags --match &quot;v*&quot;" ConsoleToMSBuild="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitDescribe" />
+      <Output TaskParameter="ExitCode" PropertyName="GitDescribeExitCode" />
+    </Exec>
+    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHash" />
+    </Exec>
+    <PropertyGroup Condition="'$(GitDescribeExitCode)' == '0'">
+      <Version>$(GitDescribe.Substring(1))</Version>
+      <SourceRevisionId>$(GitCommitHash)</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+
   <!-- Publish-only settings -->
   <PropertyGroup Condition="'$(PublishProtocol)' != ''">
     <SelfContained>true</SelfContained>
