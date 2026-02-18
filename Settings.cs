@@ -8,6 +8,7 @@ public class Settings
     public string ThemeOverride { get; set; } = "System";
     public bool Use24HourFormat { get; set; }
     public bool ShowBorder { get; set; }
+    public int Monitor { get; set; }
 
     public TimeZoneSettings[]? TimeZones { get; set; }
 

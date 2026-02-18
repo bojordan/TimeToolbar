@@ -34,6 +34,9 @@ public sealed partial class MainWindow : Window
     private bool _showCpuRam;
     private bool _use24HourFormat;
     private Window? _settingsWindow;
+    private TextBox? _xOffsetBox;
+    private TextBox? _yOffsetBox;
+    private bool _updatingOffsetBoxes;
     private double _lastCpuPercent;
     private double _lastRamPercent;
 
@@ -268,10 +271,18 @@ public sealed partial class MainWindow : Window
         NativeMethods.SendMessage(hwnd, NativeMethods.WM_SETICON, NativeMethods.ICON_BIG, icon);
     }
 
+    private DisplayArea GetTargetDisplayArea()
+    {
+        var displays = DisplayArea.FindAll();
+        var index = _settings.Monitor;
+        if (index >= 0 && index < displays.Count)
+            return displays[index];
+        return DisplayArea.Primary;
+    }
+
     private void PositionOnTaskbar()
     {
-        var windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
-        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        var displayArea = GetTargetDisplayArea();
 
         var outerBounds = displayArea.OuterBounds;
         var workArea = displayArea.WorkArea;
@@ -330,8 +341,7 @@ public sealed partial class MainWindow : Window
         if (!_isDragging) return;
         NativeMethods.GetCursorPos(out var pt);
 
-        var windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
-        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        var displayArea = GetTargetDisplayArea();
         var outerBounds = displayArea.OuterBounds;
         var workArea = displayArea.WorkArea;
 
@@ -352,6 +362,7 @@ public sealed partial class MainWindow : Window
         newY = Math.Clamp(newY, outerBounds.Y + inset, defaultY);
 
         _appWindow.Move(new PointInt32(newX, newY));
+        UpdateOffsetsFromPosition();
     }
 
     private void RootGrid_PointerReleased(object sender, PointerRoutedEventArgs e)
@@ -376,8 +387,7 @@ public sealed partial class MainWindow : Window
         var dpi = NativeMethods.GetDpiForWindow(_hWnd);
         var scale = dpi / 96.0;
         var inset = (int)(5 * scale);
-        var windowId = Win32Interop.GetWindowIdFromWindow(_hWnd);
-        var displayArea = DisplayArea.GetFromWindowId(windowId, DisplayAreaFallback.Primary);
+        var displayArea = GetTargetDisplayArea();
         var outerBounds = displayArea.OuterBounds;
         var workArea = displayArea.WorkArea;
         var baseOffset = AreWindowsWidgetsEnabled() ? 200 : 0;
@@ -390,7 +400,37 @@ public sealed partial class MainWindow : Window
         _settings.XOffset = (int)((_appWindow.Position.X - workArea.X - inset) / scale) - baseOffset;
         _settings.YOffset = (int)((_appWindow.Position.Y - defaultY) / scale);
         if (_settings.YOffset > 0) _settings.YOffset = 0;
+        UpdateOffsetBoxes();
         SaveSettings();
+    }
+
+    private void UpdateOffsetsFromPosition()
+    {
+        var dpi = NativeMethods.GetDpiForWindow(_hWnd);
+        var scale = dpi / 96.0;
+        var inset = (int)(5 * scale);
+        var displayArea = GetTargetDisplayArea();
+        var workArea = displayArea.WorkArea;
+        var outerBounds = displayArea.OuterBounds;
+        var baseOffset = AreWindowsWidgetsEnabled() ? 200 : 0;
+        var taskbarTop = workArea.Y + workArea.Height;
+        var taskbarHeight = (outerBounds.Y + outerBounds.Height) - taskbarTop;
+        if (taskbarHeight <= 0) taskbarHeight = 48;
+        var defaultY = taskbarTop + inset;
+
+        _settings.XOffset = (int)((_appWindow.Position.X - workArea.X - inset) / scale) - baseOffset;
+        _settings.YOffset = (int)((_appWindow.Position.Y - defaultY) / scale);
+        if (_settings.YOffset > 0) _settings.YOffset = 0;
+        UpdateOffsetBoxes();
+    }
+
+    private void UpdateOffsetBoxes()
+    {
+        if (_xOffsetBox == null || _yOffsetBox == null) return;
+        _updatingOffsetBoxes = true;
+        _xOffsetBox.Text = _settings.XOffset.ToString();
+        _yOffsetBox.Text = _settings.YOffset.ToString();
+        _updatingOffsetBoxes = false;
     }
 
     private void SaveSettings()
@@ -860,18 +900,44 @@ public sealed partial class MainWindow : Window
         themeRow.Children.Add(themeLabel);
         themeRow.Children.Add(themeCombo);
 
+        var displays = DisplayArea.FindAll();
+        var monitorCombo = new ComboBox();
+        for (int i = 0; i < displays.Count; i++)
+        {
+            var d = displays[i];
+            var label = $"Display {i + 1} ({d.OuterBounds.Width}x{d.OuterBounds.Height})";
+            if (d.DisplayId.Value == DisplayArea.Primary.DisplayId.Value)
+                label += " - Primary";
+            monitorCombo.Items.Add(label);
+        }
+        monitorCombo.SelectedIndex = _settings.Monitor >= 0 && _settings.Monitor < displays.Count
+            ? _settings.Monitor : 0;
+
+        var monitorRow = new Grid();
+        monitorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        monitorRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var monitorLabel = new TextBlock
+        {
+            Text = "Monitor",
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(monitorLabel, 0);
+        Grid.SetColumn(monitorCombo, 1);
+        monitorRow.Children.Add(monitorLabel);
+        monitorRow.Children.Add(monitorCombo);
+
         var borderToggle = new ToggleSwitch
         {
             IsOn = _settings.ShowBorder
         };
 
-        var xOffsetBox = new TextBox
+        var xOffsetBox = _xOffsetBox = new TextBox
         {
             Text = _settings.XOffset.ToString(),
             Width = 60,
             HorizontalTextAlignment = TextAlignment.Center
         };
-        var yOffsetBox = new TextBox
+        var yOffsetBox = _yOffsetBox = new TextBox
         {
             Text = _settings.YOffset.ToString(),
             Width = 60,
@@ -883,7 +949,7 @@ public sealed partial class MainWindow : Window
         layoutRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var layoutLabel = new TextBlock
         {
-            Text = "Layout",
+            Text = "Position",
             VerticalAlignment = VerticalAlignment.Center
         };
         var offsetsPanel = new StackPanel
@@ -911,6 +977,7 @@ public sealed partial class MainWindow : Window
             Child = MakeDividedStack(
                 themeRow,
                 MakeToggleRow("Show border", borderToggle),
+                monitorRow,
                 layoutRow
             )
         };
@@ -1111,6 +1178,14 @@ public sealed partial class MainWindow : Window
             SaveSettings();
         };
 
+        monitorCombo.SelectionChanged += (s, e) =>
+        {
+            _settings.Monitor = monitorCombo.SelectedIndex;
+            PositionOnTaskbar();
+            UpdateOffsetsFromPosition();
+            SaveSettings();
+        };
+
         borderToggle.Toggled += (s, e) =>
         {
             _settings.ShowBorder = borderToggle.IsOn;
@@ -1134,6 +1209,7 @@ public sealed partial class MainWindow : Window
 
         xOffsetBox.TextChanged += (s, e) =>
         {
+            if (_updatingOffsetBoxes) return;
             if (int.TryParse(xOffsetBox.Text, out var val))
             {
                 _settings.XOffset = val;
@@ -1144,6 +1220,7 @@ public sealed partial class MainWindow : Window
 
         yOffsetBox.TextChanged += (s, e) =>
         {
+            if (_updatingOffsetBoxes) return;
             if (int.TryParse(yOffsetBox.Text, out var val))
             {
                 _settings.YOffset = Math.Min(val, 0);
@@ -1162,6 +1239,8 @@ public sealed partial class MainWindow : Window
         window.Closed += (s, e) =>
         {
             _settingsWindow = null;
+            _xOffsetBox = null;
+            _yOffsetBox = null;
         };
         window.Activate();
 
@@ -1171,7 +1250,7 @@ public sealed partial class MainWindow : Window
         var dpi = NativeMethods.GetDpiForWindow(settingsHwnd);
         var scale = dpi / 96.0;
         var minWidth = (int)(600 * scale);
-        var minHeight = (int)(800 * scale);
+        var minHeight = (int)(900 * scale);
         settingsAppWindow.Resize(new SizeInt32(minWidth, minHeight));
         var isDarkSettings = RootGrid.ActualTheme == ElementTheme.Dark;
         if (isDarkSettings)
