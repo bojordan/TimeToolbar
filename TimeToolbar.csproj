@@ -27,9 +27,7 @@
 
   <!-- Publish-only settings -->
   <PropertyGroup Condition="'$(PublishProtocol)' != ''">
-    <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
@@ -40,7 +38,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.2" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.2" />
     <PackageReference Include="System.Management" Version="9.0.2" />
-    <PackageReference Include="Microsoft.VCRTForwarders.140" Version="1.0.8" />
+    <PackageReference Include="Microsoft.VCRTForwarders.140" Version="1.1.0" />
   </ItemGroup>
 
   <ItemGroup>
