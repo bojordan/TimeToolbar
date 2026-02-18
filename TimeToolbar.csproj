@@ -15,6 +15,7 @@
     <ApplicationIcon>clock_icon-icons.com_48329.ico</ApplicationIcon>
     <EnableMsixTooling>true</EnableMsixTooling>
     <DefineConstants>DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Platform)' == 'x64'">
@@ -24,21 +25,6 @@
   <PropertyGroup Condition="'$(Platform)' == 'ARM64'">
     <RuntimeIdentifier>win-arm64</RuntimeIdentifier>
   </PropertyGroup>
-
-  <!-- Derive version from git tags -->
-  <Target Name="SetGitVersion" BeforeTargets="PrepareForBuild">
-    <Exec Command="git describe --tags --match &quot;v*&quot;" ConsoleToMSBuild="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="GitDescribe" />
-      <Output TaskParameter="ExitCode" PropertyName="GitDescribeExitCode" />
-    </Exec>
-    <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true" StandardOutputImportance="low" StandardErrorImportance="low" IgnoreExitCode="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHash" />
-    </Exec>
-    <PropertyGroup Condition="'$(GitDescribeExitCode)' == '0'">
-      <Version>$(GitDescribe.Substring(1))</Version>
-      <SourceRevisionId>$(GitCommitHash)</SourceRevisionId>
-    </PropertyGroup>
-  </Target>
 
   <!-- Publish-only settings -->
   <PropertyGroup Condition="'$(PublishProtocol)' != ''">
@@ -51,6 +37,10 @@
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.2" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.2" />
+    <PackageReference Include="MinVer" Version="7.0.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.2" />
     <PackageReference Include="System.Management" Version="9.0.2" />
     <PackageReference Include="Microsoft.VCRTForwarders.140" Version="1.1.0" />
