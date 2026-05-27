@@ -13,6 +13,7 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <DebugType>embedded</DebugType>
     <ApplicationIcon>clock_icon-icons.com_48329.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <EnableMsixTooling>true</EnableMsixTooling>
     <DefineConstants>DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <MinVerTagPrefix>v</MinVerTagPrefix>
@@ -44,6 +45,8 @@
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.2" />
     <PackageReference Include="System.Management" Version="9.0.2" />
     <PackageReference Include="Microsoft.VCRTForwarders.140" Version="1.1.0" />
+
+    <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
   <ItemGroup>
