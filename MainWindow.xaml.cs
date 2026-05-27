@@ -503,7 +503,7 @@ public sealed partial class MainWindow : Window
         {
             Text = "CPU",
             IsTextScaleFactorEnabled = false,
-            FontSize = 11,
+            FontSize = 10,
             VerticalAlignment = VerticalAlignment.Center
         };
         var cpuLabel = _cpuLabelText;
@@ -511,7 +511,7 @@ public sealed partial class MainWindow : Window
         _cpuValueText = new TextBlock
         {
             IsTextScaleFactorEnabled = false,
-            FontSize = 11,
+            FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             MinWidth = 36
@@ -521,7 +521,7 @@ public sealed partial class MainWindow : Window
         {
             Text = "RAM",
             IsTextScaleFactorEnabled = false,
-            FontSize = 11,
+            FontSize = 10,
             VerticalAlignment = VerticalAlignment.Center
         };
         var ramLabel = _ramLabelText;
@@ -529,7 +529,7 @@ public sealed partial class MainWindow : Window
         _ramValueText = new TextBlock
         {
             IsTextScaleFactorEnabled = false,
-            FontSize = 11,
+            FontSize = 10,
             HorizontalTextAlignment = TextAlignment.Right,
             VerticalAlignment = VerticalAlignment.Center,
             MinWidth = 36
